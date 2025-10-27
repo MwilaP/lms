@@ -1,189 +1,239 @@
 <template>
-  <div class="student-analytics">
+  <div class="student-analytics min-h-screen bg-gray-50">
     <header
-      class="sticky top-0 z-10 flex items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
+      class="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-3 py-2.5 shadow-sm sm:px-5"
     >
       <Breadcrumbs class="h-7" :items="breadcrumbs" />
     </header>
 
-    <div class="p-5">
-      <div v-if="loading" class="flex justify-center py-10">
+    <div class="mx-auto max-w-7xl p-6">
+      <div v-if="loading" class="flex justify-center py-20">
         <div class="spinner"></div>
       </div>
 
       <template v-else>
-        <div class="student-header mb-6">
-          <div class="flex items-center gap-4">
-            <UserAvatar :user="studentId" size="lg" />
-            <div>
-              <h1 class="text-2xl font-bold">{{ studentName }}</h1>
-              <p class="text-gray-600">{{ studentId }}</p>
-            </div>
-          </div>
-          
-          <div class="mt-4 flex flex-wrap gap-4">
-            <div class="filter-group" v-if="courses.length > 1">
-              <label class="mb-1 block text-sm font-medium text-gray-700">{{ __('Course') }}</label>
-              <select 
-                v-model="selectedCourseIndex" 
-                class="rounded-md border border-gray-300 px-3 py-2 text-sm"
-              >
-                <option v-for="(course, index) in courses" :key="index" :value="index">
-                  {{ course.course.title }}
-                </option>
-              </select>
+        <!-- Student Header Section -->
+        <div class="student-header mb-8 rounded-xl bg-white p-6 shadow-sm">
+          <div class="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+            <div class="flex items-center gap-4">
+              <div class="relative">
+                <UserAvatar :user="studentId" size="xl" />
+                <div class="absolute -bottom-1 -right-1 h-4 w-4 rounded-full border-2 border-white"
+                     :class="selectedCourse?.summary?.last_access ? 'bg-green-500' : 'bg-gray-400'">
+                </div>
+              </div>
+              <div>
+                <h1 class="text-3xl font-bold text-gray-900">{{ studentName }}</h1>
+                <p class="text-gray-600">{{ studentId }}</p>
+                <div v-if="selectedCourse" class="mt-2 flex items-center gap-2">
+                  <div class="h-2 w-2 rounded-full bg-blue-500"></div>
+                  <span class="text-sm font-medium text-blue-600">{{ selectedCourse.course.title }}</span>
+                </div>
+              </div>
             </div>
             
-            <div class="filter-group ml-auto flex items-end gap-2">
-              <Button 
-                appearance="secondary" 
-                @click="exportCSV"
-              >
-                {{ __('Export CSV') }}
-              </Button>
+            <div class="flex flex-wrap gap-3">
+              <div class="filter-group" v-if="courses.length > 1">
+                <label class="mb-2 block text-sm font-medium text-gray-700">{{ __('Course') }}</label>
+                <select 
+                  v-model="selectedCourseIndex" 
+                  class="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                >
+                  <option v-for="(course, index) in courses" :key="index" :value="index">
+                    {{ course.course.title }}
+                  </option>
+                </select>
+              </div>
+              
             </div>
           </div>
         </div>
 
         <div v-if="selectedCourse">
-          <div class="dashboard-cards grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div class="card rounded-lg border bg-white p-4 shadow-sm">
-              <div class="card-value text-2xl font-bold">{{ formatTime(selectedCourse.summary.total_active_time) }}</div>
-              <div class="card-label text-sm text-gray-600">{{ __('Total Time Spent') }}</div>
+          <!-- Key Metrics Cards -->
+          <div class="mb-8 grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <!-- Total Time Card -->
+            <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 p-6 text-white shadow-lg transition-transform hover:scale-105">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-3xl font-bold">{{ formatTime(selectedCourse.summary.total_active_time) }}</div>
+                  <div class="mt-1 text-blue-100">{{ __('Total Time Spent') }}</div>
+                </div>
+                <div class="rounded-full bg-white/20 p-3">
+                  <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+              </div>
             </div>
             
-            <div class="card rounded-lg border bg-white p-4 shadow-sm">
-              <div class="card-value text-2xl font-bold">{{ selectedCourse.summary.sessions_count }}</div>
-              <div class="card-label text-sm text-gray-600">{{ __('Total Sessions') }}</div>
+            <!-- Sessions Card -->
+            <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-green-500 to-green-600 p-6 text-white shadow-lg transition-transform hover:scale-105">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-3xl font-bold">{{ selectedCourse.summary.sessions_count }}</div>
+                  <div class="mt-1 text-green-100">{{ __('Learning Sessions') }}</div>
+                </div>
+                <div class="rounded-full bg-white/20 p-3">
+                  <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                </div>
+              </div>
             </div>
             
-            <div class="card rounded-lg border bg-white p-4 shadow-sm">
-              <div class="card-value text-2xl font-bold">{{ selectedCourse.summary.days_active }}</div>
-              <div class="card-label text-sm text-gray-600">{{ __('Days Active') }}</div>
+            <!-- Days Active Card -->
+            <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-500 to-purple-600 p-6 text-white shadow-lg transition-transform hover:scale-105">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-3xl font-bold">{{ selectedCourse.summary.days_active }}</div>
+                  <div class="mt-1 text-purple-100">{{ __('Days Active') }}</div>
+                </div>
+                <div class="rounded-full bg-white/20 p-3">
+                  <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+              </div>
             </div>
             
-            <div class="card rounded-lg border bg-white p-4 shadow-sm">
+            <!-- Completion Card -->
+            <div class="group relative overflow-hidden rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 p-6 text-white shadow-lg transition-transform hover:scale-105">
               <div class="flex flex-col">
-                <div class="card-label text-sm text-gray-600">{{ __('Course Completion') }}</div>
-                <div class="mt-2 flex items-center gap-2">
-                  <div class="h-2 w-full max-w-[150px] rounded-full bg-gray-200">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="text-orange-100">{{ __('Course Progress') }}</div>
+                  <div class="rounded-full bg-white/20 p-2">
+                    <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                </div>
+                <div class="text-3xl font-bold mb-3">{{ selectedCourse.summary.completion }}%</div>
+                <div class="mb-3">
+                  <div class="h-2 w-full rounded-full bg-white/20">
                     <div 
-                      class="h-full rounded-full bg-green-500" 
+                      class="h-full rounded-full bg-white transition-all duration-500" 
                       :style="{ width: `${selectedCourse.summary.completion}%` }"
                     ></div>
                   </div>
-                  <span>{{ selectedCourse.summary.completion }}%</span>
                 </div>
-                <div class="mt-2 text-sm text-gray-600">
-                  {{ __('First access') }}: {{ formatDate(selectedCourse.summary.first_access) }}
-                </div>
-                <div class="text-sm text-gray-600">
-                  {{ __('Last access') }}: {{ formatDate(selectedCourse.summary.last_access) }}
+                <div class="space-y-1 text-xs text-orange-100">
+                  <div>{{ __('Started') }}: {{ formatDate(selectedCourse.summary.first_access) }}</div>
+                  <div>{{ __('Last active') }}: {{ formatDate(selectedCourse.summary.last_access) }}</div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <div class="chart-container rounded-lg border bg-white p-4 shadow-sm">
-              <h2 class="mb-4 text-lg font-medium">{{ __('Time Spent by Chapter') }}</h2>
-              <div class="h-64">
-                <AxisChart
-                  v-if="chapterChartData.length"
-                  :config="{
-                    data: chapterChartData,
-                    title: '',
-                    xAxis: {
-                      key: 'title',
-                      type: 'category',
-                      title: 'Chapter',
-                    },
-                    yAxis: {
-                      title: 'Minutes',
-                    },
-                    series: [
-                      { name: 'time_spent', type: 'bar', valueFormatter: (v) => `${Math.round(v)}m` }
-                    ],
-                  }"
-                />
-                <div v-else class="flex h-full items-center justify-center">
-                  <p class="text-gray-500">{{ __('No data available') }}</p>
-                </div>
+
+          <!-- Detailed Breakdown Section -->
+          <div class="rounded-xl bg-white p-6 shadow-lg">
+            <div class="mb-6 flex items-center gap-3">
+              <div class="rounded-lg bg-indigo-100 p-2">
+                <svg class="h-5 w-5 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+              </div>
+              <div>
+                <h2 class="text-xl font-semibold text-gray-900">{{ __('Learning Breakdown') }}</h2>
+                <p class="text-sm text-gray-600">{{ __('Detailed chapter and lesson analytics') }}</p>
               </div>
             </div>
-
-            <div class="chart-container rounded-lg border bg-white p-4 shadow-sm">
-              <h2 class="mb-4 text-lg font-medium">{{ __('Daily Activity') }}</h2>
-              <div class="h-64">
-                <AxisChart
-                  v-if="dailyChartData.length"
-                  :config="{
-                    data: dailyChartData,
-                    title: '',
-                    xAxis: {
-                      key: 'date',
-                      type: 'time',
-                      title: 'Date',
-                      timeGrain: 'day',
-                    },
-                    yAxis: {
-                      title: 'Minutes',
-                    },
-                    series: [
-                      { name: 'time_spent', type: 'line', showDataPoints: true, valueFormatter: (v) => `${Math.round(v)}m` }
-                    ],
-                  }"
-                />
-                <div v-else class="flex h-full items-center justify-center">
-                  <p class="text-gray-500">{{ __('No data available') }}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="mt-6">
-            <h2 class="mb-4 text-lg font-medium">{{ __('Chapter & Lesson Details') }}</h2>
-            <div class="overflow-x-auto rounded-lg border bg-white shadow-sm">
-              <table class="w-full table-auto">
-                <thead class="bg-gray-50 text-left text-sm font-medium text-gray-500">
+            
+            <div class="overflow-hidden rounded-lg border border-gray-200">
+              <table class="w-full">
+                <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
                   <tr>
-                    <th class="px-4 py-3">{{ __('Chapter/Lesson') }}</th>
-                    <th class="px-4 py-3">{{ __('Time Spent') }}</th>
-                    <th class="px-4 py-3">{{ __('Last Access') }}</th>
+                    <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">{{ __('Content') }}</th>
+                    <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">{{ __('Time Spent') }}</th>
+                    <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">{{ __('Last Access') }}</th>
+                    <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">{{ __('Progress') }}</th>
                   </tr>
                 </thead>    
-                <tbody>
+                <tbody class="divide-y divide-gray-200">
                   <template v-for="(chapter, chapterIndex) in selectedCourse.chapters" :key="chapterIndex">
                     <!-- Chapter row -->
-                    <tr class="bg-gray-50 font-medium">
-                      <td class="px-4 py-3">{{ chapter.title }}</td>
-                      <td class="px-4 py-3">{{ formatTime(chapter.total_active_time) }}</td>
-                      <td class="px-4 py-3">-</td>
+                    <tr class="bg-gradient-to-r from-blue-50 to-indigo-50 transition-colors hover:from-blue-100 hover:to-indigo-100">
+                      <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                          <div class="rounded-lg bg-blue-100 p-2">
+                            <svg class="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                            </svg>
+                          </div>
+                          <span class="font-semibold text-gray-900">{{ chapter.title }}</span>
+                        </div>
+                      </td>
+                      <td class="px-6 py-4">
+                        <span class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
+                          {{ formatTime(chapter.total_active_time) }}
+                        </span>
+                      </td>
+                      <td class="px-6 py-4 text-sm text-gray-600">-</td>
+                      <td class="px-6 py-4">
+                        <div class="flex items-center gap-2">
+                          <div class="h-2 w-20 rounded-full bg-gray-200">
+                            <div class="h-full rounded-full bg-blue-500" style="width: 75%"></div>
+                          </div>
+                          <span class="text-sm text-gray-600">75%</span>
+                        </div>
+                      </td>
                     </tr>
                     
                     <!-- Lesson rows -->
                     <tr 
                       v-for="(lesson, lessonIndex) in chapter.lessons" 
                       :key="`${chapterIndex}-${lessonIndex}`"
-                      class="hover:bg-gray-50"
+                      class="transition-colors hover:bg-gray-50"
                     >
-                      <td class="pl-8 py-3 pr-4 text-sm">{{ lesson.title }}</td>
-                      <td class="px-4 py-3 text-sm">{{ formatTime(lesson.active_time) }}</td>
-                      <td class="px-4 py-3 text-sm">{{ formatDate(lesson.last_access) }}</td>
+                      <td class="px-6 py-3">
+                        <div class="flex items-center gap-3 pl-8">
+                          <div class="rounded-lg bg-green-100 p-1.5">
+                            <svg class="h-3 w-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <span class="text-sm text-gray-700">{{ lesson.title }}</span>
+                        </div>
+                      </td>
+                      <td class="px-6 py-3">
+                        <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800">
+                          {{ formatTime(lesson.active_time) }}
+                        </span>
+                      </td>
+                      <td class="px-6 py-3 text-sm text-gray-600">{{ formatDate(lesson.last_access) }}</td>
+                      <td class="px-6 py-3">
+                        <div class="flex items-center gap-2">
+                          <div class="h-1.5 w-16 rounded-full bg-gray-200">
+                            <div class="h-full rounded-full bg-green-500" :style="{ width: lesson.active_time > 0 ? '100%' : '0%' }"></div>
+                          </div>
+                          <span class="text-xs text-gray-500">{{ lesson.active_time > 0 ? 'Complete' : 'Not started' }}</span>
+                        </div>
+                      </td>
                     </tr>
                     
                     <!-- Empty state for no lessons -->
                     <tr v-if="!chapter.lessons.length">
-                      <td colspan="3" class="pl-8 py-3 pr-4 text-sm text-gray-500">
-                        {{ __('No lesson data available') }}
+                      <td colspan="4" class="px-6 py-4 pl-14">
+                        <div class="flex items-center gap-2 text-sm text-gray-500">
+                          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                          {{ __('No lessons available in this chapter') }}
+                        </div>
                       </td>
                     </tr>
                   </template>
                   
                   <!-- Empty state for no chapters -->
                   <tr v-if="!selectedCourse.chapters.length">
-                    <td colspan="3" class="px-4 py-8 text-center text-gray-500">
-                      {{ __('No chapter data available') }}
+                    <td colspan="4" class="px-6 py-12 text-center">
+                      <div class="flex flex-col items-center gap-3">
+                        <svg class="h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <p class="text-gray-500">{{ __('No learning content data available') }}</p>
+                      </div>
                     </td>
                   </tr>
                 </tbody>
@@ -193,8 +243,16 @@
         </div>
         
         <!-- Empty state for no courses -->
-        <div v-else class="mt-10 text-center">
-          <p class="text-gray-500">{{ __('No course data available for this student') }}</p>
+        <div v-else class="mt-16 text-center">
+          <div class="mx-auto max-w-md rounded-xl bg-white p-8 shadow-lg">
+            <div class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-gray-100">
+              <svg class="h-10 w-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </div>
+            <h3 class="mb-2 text-lg font-semibold text-gray-900">{{ __('No Course Data') }}</h3>
+            <p class="text-gray-500">{{ __('This student hasn\'t enrolled in any courses yet or no analytics data is available.') }}</p>
+          </div>
         </div>
       </template>
     </div>
@@ -203,9 +261,7 @@
 
 <script setup>
 import {
-  AxisChart,
   Breadcrumbs,
-  Button,
   createResource,
   usePageMeta,
 } from 'frappe-ui'
@@ -220,6 +276,7 @@ const { brand } = sessionStore()
 
 // Student data
 const studentId = route.params.student
+const courseId = route.params.course
 const studentName = ref('')
 const loading = ref(true)
 const courses = ref([])
@@ -230,27 +287,10 @@ const selectedCourse = computed(() => {
   return courses.value[selectedCourseIndex.value] || null
 })
 
-const chapterChartData = computed(() => {
-  if (!selectedCourse.value) return []
-  
-  return selectedCourse.value.chapters.map(chapter => ({
-    title: chapter.title,
-    time_spent: chapter.total_active_time / 60 // Convert to minutes
-  }))
-})
-
-const dailyChartData = computed(() => {
-  if (!selectedCourse.value) return []
-  
-  return selectedCourse.value.daily_activity.map(day => ({
-    date: new Date(day.date),
-    time_spent: day.active_time / 60 // Convert to minutes
-  }))
-})
 
 // Breadcrumbs
 const breadcrumbs = computed(() => {
-  return [
+  const breadcrumbItems = [
     {
       label: 'Analytics Dashboard',
       route: {
@@ -260,11 +300,24 @@ const breadcrumbs = computed(() => {
     {
       label: studentName.value || studentId,
       route: {
-        name: 'StudentAnalytics',
+        name: 'StudentCourses',
         params: { student: studentId }
       },
     }
   ]
+  
+  // Add course breadcrumb if we have a specific course
+  if (courseId && selectedCourse.value) {
+    breadcrumbItems.push({
+      label: selectedCourse.value.course.title,
+      route: {
+        name: 'StudentCourseAnalytics',
+        params: { student: studentId, course: courseId }
+      },
+    })
+  }
+  
+  return breadcrumbItems
 })
 
 // Resources
@@ -306,20 +359,14 @@ function formatDate(dateString) {
   return new Date(dateString).toLocaleDateString()
 }
 
-function exportCSV() {
-  const params = new URLSearchParams({
-    student: studentId,
-    course: selectedCourse.value?.course?.name || ''
-  })
-  
-  window.open(`/api/method/lms.lms.learning_analytics_api.export_analytics_csv?${params.toString()}`, '_blank')
-}
 
 // Load initial data
 onMounted(() => {
-  analyticsResource.submit({
-    student: studentId
-  })
+  const params = { student: studentId }
+  if (courseId) {
+    params.course = courseId
+  }
+  analyticsResource.submit(params)
 })
 
 // Page meta

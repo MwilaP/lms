@@ -7,6 +7,9 @@
     </header>
 
     <div class="p-5">
+      <!-- Auto-Logout Test Component (Development Only) -->
+      <AutoLogoutTest class="mb-6" />
+      
       <div class="filters mb-6 flex flex-wrap gap-4 border-b pb-4">
         <div class="filter-group">
           <label class="mb-1 block text-sm font-medium text-gray-700">{{ __('Date Range') }}</label>
@@ -167,6 +170,7 @@ import {
 import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { sessionStore } from '../stores/session'
+import AutoLogoutTest from '@/components/AutoLogoutTest.vue'
 
 const router = useRouter()
 const { brand } = sessionStore()
@@ -426,7 +430,7 @@ function exportCSV() {
 
 function viewStudentDetails(student) {
   router.push({ 
-    name: 'StudentAnalytics', 
+    name: 'StudentCourses', 
     params: { student } 
   })
 }

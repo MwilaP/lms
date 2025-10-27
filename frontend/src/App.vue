@@ -12,6 +12,7 @@ import { FrappeUIProvider } from 'frappe-ui'
 import { Dialogs } from '@/utils/dialogs'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useScreenSize } from './utils/composables'
+import { useAutoLogout } from './utils/composables/useAutoLogout'
 import { usersStore } from '@/stores/user'
 import { useRouter } from 'vue-router'
 import { posthogSettings } from '@/telemetry'
@@ -24,6 +25,9 @@ const { isMobile } = useScreenSize()
 const router = useRouter()
 const noSidebar = ref(false)
 const { userResource } = usersStore()
+
+// Initialize auto-logout functionality
+useAutoLogout()
 
 router.beforeEach((to, from, next) => {
 	if (to.query.fromLesson || to.path === '/persona') {
