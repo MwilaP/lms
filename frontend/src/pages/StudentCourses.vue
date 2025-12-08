@@ -33,7 +33,7 @@
               @click="viewCourseAnalytics(course.name)"
             >
               <div class="flex items-center gap-3">
-                <div 
+                <div  
                   class="course-image h-16 w-16 flex-shrink-0 rounded bg-gray-100 flex items-center justify-center overflow-hidden"
                 >
                   <img 

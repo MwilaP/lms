@@ -267,6 +267,73 @@ def get_student_analytics(student, course=None):
 
 
 @frappe.whitelist()
+def get_student_quiz_results(student, course):
+    """Get quiz results for a specific student in a course."""
+    if not frappe.has_permission("LMS Course", "read"):
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
+    
+    # Check if user is viewing their own data or has admin rights
+    is_self = student == frappe.session.user
+    user_roles = frappe.get_roles(frappe.session.user)
+    is_admin = "System Manager" in user_roles or "Moderator" in user_roles
+    is_instructor = "Course Creator" in user_roles
+    
+    # For instructors, check if they own the course
+    if is_instructor and not is_admin:
+        course_owner = frappe.db.get_value("LMS Course", course, "owner")
+        if course_owner != frappe.session.user:
+            frappe.throw(_("Not permitted"), frappe.PermissionError)
+    
+    if not (is_self or is_admin or is_instructor):
+        frappe.throw(_("Not permitted"), frappe.PermissionError)
+    
+    # Get all quiz submissions for the student in this course
+    quiz_submissions = frappe.get_all(
+        "LMS Quiz Submission",
+        filters={
+            "member": student,
+            "course": course
+        },
+        fields=[
+            "name", "quiz", "quiz_title", "score", "score_out_of", 
+            "percentage", "passing_percentage", "creation", "modified"
+        ],
+        order_by="creation desc"
+    )
+    
+    # Group submissions by quiz (keep only the latest attempt)
+    quiz_results = {}
+    for submission in quiz_submissions:
+        quiz_id = submission.quiz
+        if quiz_id not in quiz_results:
+            # Get quiz details
+            quiz_doc = frappe.get_doc("LMS Quiz", quiz_id)
+            
+            quiz_results[quiz_id] = {
+                "quiz_id": quiz_id,
+                "quiz_title": submission.quiz_title,
+                "latest_score": submission.score,
+                "score_out_of": submission.score_out_of,
+                "percentage": submission.percentage,
+                "passing_percentage": submission.passing_percentage,
+                "passed": submission.percentage >= submission.passing_percentage,
+                "attempts": 1,
+                "last_attempt": submission.modified,
+                "first_attempt": submission.creation,
+                "lesson": quiz_doc.lesson if hasattr(quiz_doc, 'lesson') else None,
+                "lesson_title": frappe.db.get_value("Course Lesson", quiz_doc.lesson, "title") if hasattr(quiz_doc, 'lesson') and quiz_doc.lesson else None
+            }
+        else:
+            # Increment attempt count
+            quiz_results[quiz_id]["attempts"] += 1
+            # Update first attempt if this is earlier
+            if submission.creation < quiz_results[quiz_id]["first_attempt"]:
+                quiz_results[quiz_id]["first_attempt"] = submission.creation
+    
+    return list(quiz_results.values())
+
+
+@frappe.whitelist()
 def export_analytics_csv(from_date=None, to_date=None, course=None, student=None):
     """Export analytics data as CSV."""
     if not frappe.has_permission("LMS Course", "read"):

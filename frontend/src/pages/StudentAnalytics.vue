@@ -140,104 +140,144 @@
               </div>
             </div>
             
-            <div class="overflow-hidden rounded-lg border border-gray-200">
-              <table class="w-full">
-                <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
-                  <tr>
-                    <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">{{ __('Content') }}</th>
-                    <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">{{ __('Time Spent') }}</th>
-                    <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">{{ __('Last Access') }}</th>
-                    <th class="px-6 py-4 text-left text-sm font-semibold text-gray-700">{{ __('Progress') }}</th>
-                  </tr>
-                </thead>    
-                <tbody class="divide-y divide-gray-200">
-                  <template v-for="(chapter, chapterIndex) in selectedCourse.chapters" :key="chapterIndex">
-                    <!-- Chapter row -->
-                    <tr class="bg-gradient-to-r from-blue-50 to-indigo-50 transition-colors hover:from-blue-100 hover:to-indigo-100">
-                      <td class="px-6 py-4">
-                        <div class="flex items-center gap-3">
-                          <div class="rounded-lg bg-blue-100 p-2">
-                            <svg class="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                            </svg>
-                          </div>
-                          <span class="font-semibold text-gray-900">{{ chapter.title }}</span>
-                        </div>
-                      </td>
-                      <td class="px-6 py-4">
-                        <span class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
-                          {{ formatTime(chapter.total_active_time) }}
-                        </span>
-                      </td>
-                      <td class="px-6 py-4 text-sm text-gray-600">-</td>
-                      <td class="px-6 py-4">
-                        <div class="flex items-center gap-2">
-                          <div class="h-2 w-20 rounded-full bg-gray-200">
-                            <div class="h-full rounded-full bg-blue-500" style="width: 75%"></div>
-                          </div>
-                          <span class="text-sm text-gray-600">75%</span>
-                        </div>
-                      </td>
-                    </tr>
+            <div class="space-y-3">
+              <template v-for="(chapter, chapterIndex) in selectedCourse.chapters" :key="chapterIndex">
+                <!-- Chapter Card -->
+                <div class="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+                  <!-- Chapter Header (Clickable) -->
+                  <div 
+                    @click="toggleChapter(chapterIndex)"
+                    class="flex cursor-pointer items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-4 transition-colors hover:from-blue-100 hover:to-indigo-100"
+                  >
+                    <div class="flex flex-1 items-center gap-3">
+                      <div class="rounded-lg bg-blue-100 p-2">
+                        <svg class="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                      </div>
+                      <div class="flex-1">
+                        <h3 class="font-semibold text-gray-900">{{ chapter.title }}</h3>
+                        <p class="text-xs text-gray-600">{{ chapter.lessons.length }} {{ chapter.lessons.length === 1 ? __('lesson') : __('lessons') }}</p>
+                      </div>
+                    </div>
                     
-                    <!-- Lesson rows -->
-                    <tr 
+                    <div class="flex items-center gap-4">
+                      <span class="inline-flex items-center rounded-full bg-blue-100 px-3 py-1 text-sm font-medium text-blue-800">
+                        {{ formatTime(chapter.total_active_time) }}
+                      </span>
+                      <svg 
+                        class="h-5 w-5 text-gray-500 transition-transform duration-200"
+                        :class="{ 'rotate-180': expandedChapters[chapterIndex] }"
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </div>
+                  </div>
+                  
+                  <!-- Chapter Content (Collapsible) -->
+                  <div 
+                    v-show="expandedChapters[chapterIndex]"
+                    class="divide-y divide-gray-100"
+                  >
+                    <!-- Lessons -->
+                    <div 
                       v-for="(lesson, lessonIndex) in chapter.lessons" 
-                      :key="`${chapterIndex}-${lessonIndex}`"
-                      class="transition-colors hover:bg-gray-50"
+                      :key="`lesson-${chapterIndex}-${lessonIndex}`"
+                      class="flex items-center justify-between px-6 py-3 transition-colors hover:bg-gray-50"
                     >
-                      <td class="px-6 py-3">
-                        <div class="flex items-center gap-3 pl-8">
-                          <div class="rounded-lg bg-green-100 p-1.5">
-                            <svg class="h-3 w-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                          </div>
-                          <span class="text-sm text-gray-700">{{ lesson.title }}</span>
+                      <div class="flex flex-1 items-center gap-3">
+                        <div class="rounded-lg bg-green-100 p-1.5">
+                          <svg class="h-3 w-3 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
                         </div>
-                      </td>
-                      <td class="px-6 py-3">
+                        <div class="flex-1">
+                          <p class="text-sm font-medium text-gray-900">{{ lesson.title }}</p>
+                          <p class="text-xs text-gray-500">{{ __('Last access') }}: {{ formatDate(lesson.last_access) }}</p>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-3">
                         <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-800">
                           {{ formatTime(lesson.active_time) }}
                         </span>
-                      </td>
-                      <td class="px-6 py-3 text-sm text-gray-600">{{ formatDate(lesson.last_access) }}</td>
-                      <td class="px-6 py-3">
                         <div class="flex items-center gap-2">
                           <div class="h-1.5 w-16 rounded-full bg-gray-200">
                             <div class="h-full rounded-full bg-green-500" :style="{ width: lesson.active_time > 0 ? '100%' : '0%' }"></div>
                           </div>
-                          <span class="text-xs text-gray-500">{{ lesson.active_time > 0 ? 'Complete' : 'Not started' }}</span>
                         </div>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
+                    
+                    <!-- Quiz Results for this Chapter -->
+                    <div 
+                      v-for="quiz in getQuizzesForChapter(chapter)" 
+                      :key="`quiz-${quiz.quiz_id}`"
+                      class="flex items-center justify-between px-6 py-3 transition-colors"
+                      :class="quiz.passed ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'"
+                    >
+                      <div class="flex flex-1 items-center gap-3">
+                        <div 
+                          class="rounded-lg p-1.5"
+                          :class="quiz.passed ? 'bg-green-100' : 'bg-red-100'"
+                        >
+                          <svg class="h-3 w-3" :class="quiz.passed ? 'text-green-600' : 'text-red-600'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                          </svg>
+                        </div>
+                        <div class="flex-1">
+                          <div class="flex items-center gap-2">
+                            <p class="text-sm font-medium text-gray-900">{{ quiz.quiz_title }}</p>
+                            <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium" :class="quiz.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+                              {{ quiz.passed ? __('Passed') : __('Failed') }}
+                            </span>
+                          </div>
+                          <p class="text-xs text-gray-500">{{ quiz.attempts }} {{ quiz.attempts === 1 ? __('attempt') : __('attempts') }} • {{ formatDate(quiz.last_attempt) }}</p>
+                        </div>
+                      </div>
+                      <div class="flex items-center gap-3">
+                        <div class="text-right">
+                          <p class="text-sm font-bold" :class="quiz.passed ? 'text-green-700' : 'text-red-700'">
+                            {{ quiz.latest_score }}/{{ quiz.score_out_of }}
+                          </p>
+                          <p class="text-xs text-gray-600">{{ quiz.percentage }}%</p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                          <div class="h-1.5 w-16 rounded-full bg-gray-200">
+                            <div 
+                              class="h-full rounded-full transition-all duration-500"
+                              :class="quiz.passed ? 'bg-green-500' : 'bg-red-500'"
+                              :style="{ width: `${quiz.percentage}%` }"
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                     
                     <!-- Empty state for no lessons -->
-                    <tr v-if="!chapter.lessons.length">
-                      <td colspan="4" class="px-6 py-4 pl-14">
-                        <div class="flex items-center gap-2 text-sm text-gray-500">
-                          <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          {{ __('No lessons available in this chapter') }}
-                        </div>
-                      </td>
-                    </tr>
-                  </template>
-                  
-                  <!-- Empty state for no chapters -->
-                  <tr v-if="!selectedCourse.chapters.length">
-                    <td colspan="4" class="px-6 py-12 text-center">
-                      <div class="flex flex-col items-center gap-3">
-                        <svg class="h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    <div v-if="!chapter.lessons.length && !getQuizzesForChapter(chapter).length" class="px-6 py-4">
+                      <div class="flex items-center gap-2 text-sm text-gray-500">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
-                        <p class="text-gray-500">{{ __('No learning content data available') }}</p>
+                        {{ __('No content available in this chapter') }}
                       </div>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              
+              <!-- Empty state for no chapters -->
+              <div v-if="!selectedCourse.chapters.length" class="rounded-lg border border-gray-200 bg-white px-6 py-12 text-center">
+                <div class="flex flex-col items-center gap-3">
+                  <svg class="h-12 w-12 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  <p class="text-gray-500">{{ __('No learning content data available') }}</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -281,6 +321,8 @@ const studentName = ref('')
 const loading = ref(true)
 const courses = ref([])
 const selectedCourseIndex = ref(0)
+const quizResults = ref([])
+const expandedChapters = ref({})
 
 // Computed
 const selectedCourse = computed(() => {
@@ -341,9 +383,20 @@ const analyticsResource = createResource({
   onSuccess: (data) => {
     courses.value = data || []
     loading.value = false
+    // Load quiz results for the first course if available
+    if (data && data.length > 0) {
+      loadQuizResults(data[0].course.name)
+    }
   },
   onError: () => {
     loading.value = false
+  }
+})
+
+const quizResultsResource = createResource({
+  url: 'lms.lms.learning_analytics_api.get_student_quiz_results',
+  onSuccess: (data) => {
+    quizResults.value = data || []
   }
 })
 
@@ -359,6 +412,36 @@ function formatDate(dateString) {
   return new Date(dateString).toLocaleDateString()
 }
 
+function loadQuizResults(courseName) {
+  if (courseName) {
+    quizResultsResource.submit({
+      student: studentId,
+      course: courseName
+    })
+  }
+}
+
+function toggleChapter(chapterIndex) {
+  expandedChapters.value[chapterIndex] = !expandedChapters.value[chapterIndex]
+}
+
+function getQuizzesForChapter(chapter) {
+  // Filter quizzes that belong to lessons in this chapter
+  return quizResults.value.filter(quiz => {
+    // Check if quiz's lesson is in this chapter
+    return chapter.lessons.some(lesson => lesson.name === quiz.lesson)
+  })
+}
+
+
+// Watch for course selection changes
+watch(selectedCourse, (newCourse) => {
+  if (newCourse && newCourse.course && newCourse.course.name) {
+    loadQuizResults(newCourse.course.name)
+    // Reset expanded chapters when switching courses
+    expandedChapters.value = {}
+  }
+})
 
 // Load initial data
 onMounted(() => {

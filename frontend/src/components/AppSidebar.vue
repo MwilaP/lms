@@ -83,11 +83,6 @@
 				"
 				:isSidebarCollapsed="sidebarStore.isSidebarCollapsed"
 			/>
-			<GettingStartedBanner
-				v-if="showOnboarding && !isOnboardingStepsCompleted"
-				:isSidebarCollapsed="sidebarStore.isSidebarCollapsed"
-				appName="learning"
-			/>
 
 			<div
 				class="flex items-center mt-4"
@@ -203,7 +198,6 @@ import {
 import {
 	TrialBanner,
 	HelpModal,
-	GettingStartedBanner,
 	useOnboarding,
 	showHelpModal,
 	minimize,
@@ -256,6 +250,8 @@ const setSidebarLinks = () => {
 						)
 					}
 				})
+				// Filter Learning Analytics based on user roles
+				filterLearningAnalytics()
 			},
 		}
 	)
@@ -294,6 +290,18 @@ const addNotifications = () => {
 			activeFor: ['Notifications'],
 			count: unreadCount.value,
 		})
+	}
+}
+
+const filterLearningAnalytics = () => {
+	// Only show Learning Analytics to Administrator, Instructor, and Moderator
+	const isAdmin = userResource.data?.is_system_manager
+	const hasAccess = isAdmin || isInstructor.value || isModerator.value
+	
+	if (!hasAccess) {
+		sidebarLinks.value = sidebarLinks.value.filter(
+			(link) => link.label !== 'Learning Analytics'
+		)
 	}
 }
 
@@ -637,6 +645,7 @@ watch(userResource, () => {
 		addProgrammingExercises()
 		addQuizzes()
 		addAssignments()
+		filterLearningAnalytics()
 		setUpOnboarding()
 	}
 })
