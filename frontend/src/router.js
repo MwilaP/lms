@@ -79,7 +79,13 @@ const routes = [
 	},
 	{
 		path: '/admin/analytics/student/:student',
-		name: 'StudentAnalytics',
+		name: 'StudentCourses',
+		component: () => import('@/pages/StudentCourses.vue'),
+		props: true,
+	},
+	{
+		path: '/admin/analytics/student/:student/course/:course',
+		name: 'StudentCourseAnalytics',
 		component: () => import('@/pages/StudentAnalytics.vue'),
 		props: true,
 	},

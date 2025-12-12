@@ -426,7 +426,7 @@ function exportCSV() {
 
 function viewStudentDetails(student) {
   router.push({ 
-    name: 'StudentAnalytics', 
+    name: 'StudentCourses', 
     params: { student } 
   })
 }
