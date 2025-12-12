@@ -159,9 +159,6 @@ website_route_rules = [
 		"from_route": "/courses/<course_name>/<certificate_id>",
 		"to_route": "certificate",
 	},
-	{"from_route": "/lms/admin/analytics", "to_route": "lms/admin/analytics"},
-	{"from_route": "/lms/admin/analytics/course/<course>", "to_route": "lms/admin/analytics/course"},
-	{"from_route": "/lms/admin/analytics/student/<student>", "to_route": "lms/admin/analytics/student"},
 ]
 
 website_redirects = [
