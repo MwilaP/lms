@@ -12,10 +12,31 @@
 				user.data?.is_instructor)
 		"
 	>
-		<iframe
-			:src="chapter.doc.launch_file"
-			class="w-full h-[calc(100vh-3.00rem)]"
-		/>
+		<div class="relative w-full h-[calc(100vh-3.00rem)]">
+			<div
+				v-if="scormLoading || scormLoadError"
+				class="absolute inset-0 z-10 flex items-center justify-center bg-surface-white/80"
+			>
+				<div class="flex flex-col items-center px-4 text-center">
+					<div
+						v-if="!scormLoadError"
+						class="h-10 w-10 rounded-full border-4 border-outline-gray-2 border-t-ink-gray-7 animate-spin"
+					></div>
+					<div class="mt-3 text-sm text-ink-gray-7">
+						{{
+							scormLoadError
+								? __('SCORM is taking longer than expected to load.')
+								: __('Loading SCORM content...')
+						}}
+					</div>
+				</div>
+			</div>
+			<iframe
+				:src="chapter.doc.launch_file"
+				class="w-full h-full"
+				@load="onScormIframeLoaded"
+			/>
+		</div>
 	</div>
 	<div v-else-if="!enrollment.data?.length">
 		<div class="text-center pt-10 px-5 md:px-0 pb-10">
@@ -44,7 +65,7 @@ import {
 	createResource,
 	usePageMeta,
 } from 'frappe-ui'
-import { computed, inject, onBeforeMount, ref } from 'vue'
+import { computed, inject, onBeforeMount, onBeforeUnmount, ref, watch } from 'vue'
 import { useSidebar } from '@/stores/sidebar'
 import { sessionStore } from '../stores/session'
 
@@ -53,6 +74,9 @@ const sidebarStore = useSidebar()
 const user = inject('$user')
 const readyToRender = ref(false)
 const isSuccessfullyCompleted = ref(false)
+const scormLoading = ref(true)
+const scormLoadError = ref(false)
+let scormLoadTimeout = null
 
 // If courseRestartOnFailure is true, student has to restart the whole course if failed.
 // Otherwise, student could retake the final quiz portion.
@@ -73,6 +97,12 @@ const props = defineProps({
 onBeforeMount(() => {
 	sidebarStore.isSidebarCollapsed = true
 	setupSCORMAPI()
+	scormLoading.value = true
+	scormLoadError.value = false
+})
+
+onBeforeUnmount(() => {
+	if (scormLoadTimeout) clearTimeout(scormLoadTimeout)
 })
 
 const chapter = createDocumentResource({
@@ -81,6 +111,13 @@ const chapter = createDocumentResource({
 	auto: true,
 	cache: ['chapter', props.chapterName],
 	onSuccess(data) {
+		scormLoading.value = true
+		scormLoadError.value = false
+		if (scormLoadTimeout) clearTimeout(scormLoadTimeout)
+		scormLoadTimeout = setTimeout(() => {
+			scormLoadError.value = true
+			scormLoading.value = false
+		}, 30000)
 		progress.submit()
 	},
 })
@@ -163,6 +200,13 @@ const progress = createResource({
 		readyToRender.value = true
 	},
 })
+
+
+const onScormIframeLoaded = () => {
+	scormLoading.value = false
+	scormLoadError.value = false
+	if (scormLoadTimeout) clearTimeout(scormLoadTimeout)
+}
 
 const enrollStudent = () => {
 	enrollment.insert.submit(

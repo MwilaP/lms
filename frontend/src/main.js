@@ -1,4 +1,5 @@
 import './index.css'
+import './assets/interactive-blocks.css'
 import { createApp } from 'vue'
 import router from './router'
 import App from './App.vue'
