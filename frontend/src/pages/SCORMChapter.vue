@@ -32,6 +32,7 @@
 				</div>
 			</div>
 			<iframe
+				:key="iframeKey"
 				:src="chapter.doc.launch_file"
 				class="w-full h-full"
 				@load="onScormIframeLoaded"
@@ -65,7 +66,7 @@ import {
 	createResource,
 	usePageMeta,
 } from 'frappe-ui'
-import { computed, inject, onBeforeMount, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, inject, onBeforeMount, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useSidebar } from '@/stores/sidebar'
 import { sessionStore } from '../stores/session'
 
@@ -76,6 +77,7 @@ const readyToRender = ref(false)
 const isSuccessfullyCompleted = ref(false)
 const scormLoading = ref(true)
 const scormLoadError = ref(false)
+const iframeKey = ref(0)
 let scormLoadTimeout = null
 
 // If courseRestartOnFailure is true, student has to restart the whole course if failed.
@@ -94,11 +96,25 @@ const props = defineProps({
 	},
 })
 
+const resetLoadingState = () => {
+	readyToRender.value = false
+	scormLoading.value = true
+	scormLoadError.value = false
+	if (scormLoadTimeout) clearTimeout(scormLoadTimeout)
+}
+
 onBeforeMount(() => {
 	sidebarStore.isSidebarCollapsed = true
 	setupSCORMAPI()
-	scormLoading.value = true
-	scormLoadError.value = false
+	resetLoadingState()
+})
+
+onMounted(() => {
+	// Force chapter reload on mount
+	if (chapter.doc) {
+		resetLoadingState()
+		progress.submit()
+	}
 })
 
 onBeforeUnmount(() => {
@@ -111,9 +127,8 @@ const chapter = createDocumentResource({
 	auto: true,
 	cache: ['chapter', props.chapterName],
 	onSuccess(data) {
-		scormLoading.value = true
-		scormLoadError.value = false
-		if (scormLoadTimeout) clearTimeout(scormLoadTimeout)
+		resetLoadingState()
+		iframeKey.value++
 		scormLoadTimeout = setTimeout(() => {
 			scormLoadError.value = true
 			scormLoading.value = false
@@ -207,6 +222,17 @@ const onScormIframeLoaded = () => {
 	scormLoadError.value = false
 	if (scormLoadTimeout) clearTimeout(scormLoadTimeout)
 }
+
+// Watch for chapter name changes (navigation)
+watch(
+	() => props.chapterName,
+	(newChapter, oldChapter) => {
+		if (newChapter !== oldChapter) {
+			resetLoadingState()
+			chapter.reload()
+		}
+	}
+)
 
 const enrollStudent = () => {
 	enrollment.insert.submit(
