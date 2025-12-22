@@ -23,11 +23,12 @@
 						class="h-10 w-10 rounded-full border-4 border-outline-gray-2 border-t-ink-gray-7 animate-spin"
 					></div>
 					<div class="mt-3 text-sm text-ink-gray-7">
-						{{
-							scormLoadError
-								? __('SCORM is taking longer than expected to load.')
-								: __('Loading SCORM content...')
-						}}
+						{{ loadingMessage }}
+					</div>
+					<div v-if="scormLoadError && retryCount < maxRetries" class="mt-4">
+						<Button variant="solid" @click="retryLoad">
+							{{ __('Retry') }}
+						</Button>
 					</div>
 				</div>
 			</div>
@@ -35,7 +36,12 @@
 				:key="iframeKey"
 				:src="chapter.doc.launch_file"
 				class="w-full h-full"
+				loading="eager"
+				importance="high"
+				sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+				allow="autoplay; fullscreen; accelerometer; gyroscope"
 				@load="onScormIframeLoaded"
+				@error="onScormIframeError"
 			/>
 		</div>
 	</div>
@@ -78,7 +84,12 @@ const isSuccessfullyCompleted = ref(false)
 const scormLoading = ref(true)
 const scormLoadError = ref(false)
 const iframeKey = ref(0)
+const loadStartTime = ref(0)
+const retryCount = ref(0)
+const maxRetries = 3
 let scormLoadTimeout = null
+let pendingUpdates = {}
+let commitTimeout = null
 
 // If courseRestartOnFailure is true, student has to restart the whole course if failed.
 // Otherwise, student could retake the final quiz portion.
@@ -100,6 +111,7 @@ const resetLoadingState = () => {
 	readyToRender.value = false
 	scormLoading.value = true
 	scormLoadError.value = false
+	loadStartTime.value = Date.now()
 	if (scormLoadTimeout) clearTimeout(scormLoadTimeout)
 }
 
@@ -119,6 +131,11 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
 	if (scormLoadTimeout) clearTimeout(scormLoadTimeout)
+	if (saveTimeout) clearTimeout(saveTimeout)
+	if (commitTimeout) clearTimeout(commitTimeout)
+	flushPendingUpdates()
+	delete window.API_1484_11
+	delete window.API
 })
 
 const chapter = createDocumentResource({
@@ -128,11 +145,17 @@ const chapter = createDocumentResource({
 	cache: ['chapter', props.chapterName],
 	onSuccess(data) {
 		resetLoadingState()
+		if (data.launch_file) {
+			const link = document.createElement('link')
+			link.rel = 'prefetch'
+			link.href = data.launch_file
+			document.head.appendChild(link)
+		}
 		iframeKey.value++
 		scormLoadTimeout = setTimeout(() => {
 			scormLoadError.value = true
 			scormLoading.value = false
-		}, 30000)
+		}, 15000)
 		progress.submit()
 	},
 })
@@ -167,25 +190,42 @@ const debouncedSaveProgress = (scormDetails) => {
 	}, 300)
 }
 
-const saveDataToLMS = (key, value) => {
-	if (key === 'cmi.core.lesson_status') {
-		if (value === 'passed') {
-			isSuccessfullyCompleted.value = true
-			saveProgress({
-				is_complete: isSuccessfullyCompleted.value,
-				scorm_content: '',
-			})
-		} else if (value === 'failed' && courseRestartOnFailure) {
-			saveProgress({
-				is_complete: isSuccessfullyCompleted.value,
-				scorm_content: '',
-			})
-		}
-	} else if (key === 'cmi.suspend_data' && !isSuccessfullyCompleted.value) {
-		debouncedSaveProgress({
-			is_complete: false,
-			scorm_content: value,
+const flushPendingUpdates = () => {
+	if (Object.keys(pendingUpdates).length === 0) return
+
+	const hasStatusChange = 'cmi.core.lesson_status' in pendingUpdates
+	const hasSuspendData = 'cmi.suspend_data' in pendingUpdates
+
+	if (hasStatusChange && pendingUpdates['cmi.core.lesson_status'] === 'passed') {
+		isSuccessfullyCompleted.value = true
+		saveProgress({
+			is_complete: true,
+			scorm_content: pendingUpdates['cmi.suspend_data'] || '',
 		})
+	} else if (hasStatusChange && pendingUpdates['cmi.core.lesson_status'] === 'failed' && courseRestartOnFailure) {
+		saveProgress({
+			is_complete: isSuccessfullyCompleted.value,
+			scorm_content: '',
+		})
+	} else if (hasSuspendData && !isSuccessfullyCompleted.value) {
+		saveProgress({
+			is_complete: false,
+			scorm_content: pendingUpdates['cmi.suspend_data'],
+		})
+	}
+
+	pendingUpdates = {}
+}
+
+const saveDataToLMS = (key, value) => {
+	pendingUpdates[key] = value
+
+	if (key === 'cmi.core.lesson_status') {
+		clearTimeout(commitTimeout)
+		flushPendingUpdates()
+	} else {
+		clearTimeout(commitTimeout)
+		commitTimeout = setTimeout(flushPendingUpdates, 1000)
 	}
 }
 
@@ -220,7 +260,31 @@ const progress = createResource({
 const onScormIframeLoaded = () => {
 	scormLoading.value = false
 	scormLoadError.value = false
+	retryCount.value = 0
 	if (scormLoadTimeout) clearTimeout(scormLoadTimeout)
+}
+
+const onScormIframeError = () => {
+	if (retryCount.value < maxRetries) {
+		retryCount.value++
+		setTimeout(() => {
+			resetLoadingState()
+			iframeKey.value++
+		}, 2000)
+	} else {
+		scormLoadError.value = true
+		scormLoading.value = false
+	}
+}
+
+const retryLoad = () => {
+	retryCount.value = 0
+	resetLoadingState()
+	iframeKey.value++
+	scormLoadTimeout = setTimeout(() => {
+		scormLoadError.value = true
+		scormLoading.value = false
+	}, 15000)
 }
 
 // Watch for chapter name changes (navigation)
@@ -285,6 +349,19 @@ const setupSCORMAPI = () => {
 		LMSGetDiagnostic: () => '',
 	}
 }
+
+const loadingMessage = computed(() => {
+	if (scormLoadError.value) {
+		if (retryCount.value > 0) {
+			return __('Retrying... ({0}/{1})', [retryCount.value, maxRetries])
+		}
+		return __('Content is taking longer than expected to load.')
+	}
+	const elapsed = Date.now() - loadStartTime.value
+	if (elapsed < 5000) return __('Initializing content...')
+	if (elapsed < 10000) return __('Loading resources...')
+	return __('Almost ready...')
+})
 
 const breadcrumbs = computed(() => {
 	return [
