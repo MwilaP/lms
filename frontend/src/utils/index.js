@@ -19,6 +19,16 @@ import SimpleImage from '@editorjs/simple-image'
 import Table from '@editorjs/table'
 import Plyr from 'plyr'
 import 'plyr/dist/plyr.css'
+import { Accordion } from '@/utils/blocks/accordion'
+import { Tabs } from '@/utils/blocks/tabs'
+import { FlipCards } from '@/utils/blocks/flipcards'
+import { Timeline } from '@/utils/blocks/timeline'
+import { Process } from '@/utils/blocks/process'
+import { LabeledGraphic } from '@/utils/blocks/labeledgraphic'
+import { SortableList } from '@/utils/blocks/sortablelist'
+import { Flashcards } from '@/utils/blocks/flashcards'
+import { MatchingPairs } from '@/utils/blocks/matchingpairs'
+import { Scenario } from '@/utils/blocks/scenario'
 
 const readOnlyMode = window.read_only_mode
 
@@ -129,6 +139,16 @@ export function getEditorTools() {
 			class: Table,
 			inlineToolbar: true,
 		},
+		accordion: Accordion,
+		tabs: Tabs,
+		flipcards: FlipCards,
+		timeline: Timeline,
+		process: Process,
+		labeledgraphic: LabeledGraphic,
+		sortablelist: SortableList,
+		flashcards: Flashcards,
+		matchingpairs: MatchingPairs,
+		scenario: Scenario,
 		quiz: Quiz,
 		assignment: Assignment,
 		program: Program,

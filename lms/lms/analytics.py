@@ -82,12 +82,18 @@ def get_student_time_analytics(student=None, course=None, from_date=None, to_dat
                 "total_active_time": 0,
                 "total_sessions": 0,
                 "days_active": 0,
+                "last_active": None,
                 "daily_data": []
             }
         
         result[key]["total_active_time"] += cint(a.active_time)
         result[key]["total_sessions"] += cint(a.sessions_count)
         result[key]["days_active"] += 1
+        
+        # Track the most recent activity date
+        if not result[key]["last_active"] or a.date > result[key]["last_active"]:
+            result[key]["last_active"] = a.date
+        
         result[key]["daily_data"].append({
             "date": a.date,
             "active_time": a.active_time,
