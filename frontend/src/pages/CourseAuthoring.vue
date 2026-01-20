@@ -683,18 +683,14 @@ async function addLesson(chapterName) {
 }
 
 async function addSlide(lessonName) {
-	const title = prompt(__('Slide title'))
-	if (!title) return
 	try {
 		const data = await call('lms.lms.authoring_api.create_slide', {
 			lesson: lessonName,
-			title,
 		})
 		await fetchOutline()
 		if (data?.name) {
 			selectSlide(data.name)
 		}
-		toast.success(__('Slide added'))
 	} catch (e) {
 		toast.error(__('Failed to add slide'))
 	}
