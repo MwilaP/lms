@@ -14,6 +14,15 @@
 		@published="onVersionPublished"
 		@restored="onVersionRestored"
 	/>
+	<SlideTemplates
+		:show="showTemplates"
+		@close="showTemplates = false"
+		@apply="applyTemplate"
+	/>
+	<KeyboardShortcuts
+		:show="showShortcuts"
+		@close="showShortcuts = false"
+	/>
 	<div class="h-screen flex flex-col bg-surface-gray-1 overflow-hidden">
 		<header class="flex items-center justify-between bg-surface-white border-b px-4 py-2 shrink-0">
 			<div class="flex items-center space-x-3">
@@ -84,46 +93,28 @@
 			</aside>
 
 			<main class="flex-1 flex flex-col overflow-hidden">
-				<div class="flex items-center justify-between bg-surface-white border-b px-4 py-2 shrink-0">
-					<div class="flex items-center space-x-2">
-						<Button variant="ghost" size="sm" @click="addElement('rect')" :disabled="!selectedSlide">
-							<template #icon>
-								<Square class="w-4 h-4" />
-							</template>
-						</Button>
-						<Button variant="ghost" size="sm" @click="addElement('text')" :disabled="!selectedSlide">
-							<template #icon>
-								<Type class="w-4 h-4" />
-							</template>
-						</Button>
-						<Button variant="ghost" size="sm" @click="addElement('image')" :disabled="!selectedSlide">
-							<template #icon>
-								<ImageIcon class="w-4 h-4" />
-							</template>
-						</Button>
-						<Button variant="ghost" size="sm" @click="addElement('circle')" :disabled="!selectedSlide">
-							<template #icon>
-								<Circle class="w-4 h-4" />
-							</template>
-						</Button>
-						<div class="w-px h-5 bg-outline-gray-2 mx-2"></div>
-						<Button variant="ghost" size="sm" @click="undo" :disabled="!canUndo">
-							<template #icon>
-								<Undo2 class="w-4 h-4" />
-							</template>
-						</Button>
-						<Button variant="ghost" size="sm" @click="redo" :disabled="!canRedo">
-							<template #icon>
-								<Redo2 class="w-4 h-4" />
-							</template>
-						</Button>
-					</div>
-					<div class="flex items-center space-x-2">
-						<span v-if="selectedSlide" class="text-sm text-ink-gray-7">
-							{{ selectedSlideData?.title || selectedSlide }}
-						</span>
-					</div>
-				</div>
+				<EditorToolbar
+					:disabled="!selectedSlide"
+					:hasSelection="!!selectedElement"
+					:hasClipboard="!!clipboard"
+					:canUndo="canUndo"
+					:canRedo="canRedo"
+					:showGrid="showGrid"
+					:snapEnabled="snapEnabled"
+					:zoomLevel="zoomLevel"
+					:activeTool="activeTool"
+					@add-element="addElement"
+					@layer-action="handleLayerAction"
+					@action="handleAction"
+					@undo="undo"
+					@redo="redo"
+					@toggle-grid="toggleGrid"
+					@toggle-snap="snapEnabled = !snapEnabled"
+					@zoom="handleZoom"
+					@tool-change="activeTool = $event"
+					@image-upload="handleImageUpload"
+					@show-templates="showTemplates = true"
+				/>
 
 				<div class="flex-1 flex overflow-hidden">
 					<div class="flex-1 flex items-center justify-center bg-surface-gray-2 p-6 overflow-auto">
@@ -203,12 +194,6 @@ import {
 	Play,
 	Upload,
 	Plus,
-	Square,
-	Type,
-	Image as ImageIcon,
-	Circle,
-	Undo2,
-	Redo2,
 	Settings,
 } from 'lucide-vue-next'
 import AuthoringOutline from '@/components/Authoring/AuthoringOutline.vue'
@@ -216,6 +201,9 @@ import ElementInspector from '@/components/Authoring/ElementInspector.vue'
 import InteractionEditor from '@/components/Authoring/InteractionEditor.vue'
 import PreviewPlayer from '@/components/Authoring/PreviewPlayer.vue'
 import VersionHistory from '@/components/Authoring/VersionHistory.vue'
+import EditorToolbar from '@/components/Authoring/EditorToolbar.vue'
+import SlideTemplates from '@/components/Authoring/SlideTemplates.vue'
+import KeyboardShortcuts from '@/components/Authoring/KeyboardShortcuts.vue'
 
 const props = defineProps({
 	courseName: {
@@ -236,6 +224,14 @@ const selectedElement = ref(null)
 const saveStatus = ref('')
 const showPreview = ref(false)
 const showVersionHistory = ref(false)
+
+const activeTool = ref('select')
+const showGrid = ref(false)
+const snapEnabled = ref(true)
+const zoomLevel = ref(100)
+const clipboard = ref(null)
+const showTemplates = ref(false)
+const showShortcuts = ref(false)
 
 const stageBaseWidth = 1024
 const stageBaseHeight = 576
@@ -462,8 +458,17 @@ function renderStage(konvaJson) {
 			const node = transformer.nodes()[0]
 			selectedElement.value = { ...node.getAttrs(), _node: node }
 		}
+		hideGuides()
 		scheduleAutosave()
 		pushHistory()
+	})
+
+	// Smart guides during drag
+	stage.on('dragmove', (e) => {
+		if (!snapEnabled.value) return
+		const target = e.target
+		if (target === stage || target.getLayer() === uiLayer) return
+		showSmartGuides(target)
 	})
 
 	fitStage()
@@ -492,16 +497,15 @@ function handleResize() {
 
 function handleKeydown(e) {
 	if (!stage) return
+	
+	// Delete element
 	if (e.key === 'Delete' || e.key === 'Backspace') {
 		if (selectedElement.value?._node) {
-			selectedElement.value._node.destroy()
-			transformer.nodes([])
-			selectedElement.value = null
-			stage.draw()
-			scheduleAutosave()
-			pushHistory()
+			deleteElement()
 		}
 	}
+	
+	// Undo/Redo
 	if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
 		e.preventDefault()
 		if (e.shiftKey) {
@@ -510,58 +514,199 @@ function handleKeydown(e) {
 			undo()
 		}
 	}
+	if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
+		e.preventDefault()
+		redo()
+	}
+	
+	// Save
 	if ((e.ctrlKey || e.metaKey) && e.key === 's') {
 		e.preventDefault()
 		saveSlide()
+	}
+	
+	// Copy/Paste/Duplicate
+	if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+		if (selectedElement.value?._node) {
+			e.preventDefault()
+			copyElement()
+		}
+	}
+	if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+		if (clipboard.value) {
+			e.preventDefault()
+			pasteElement()
+		}
+	}
+	if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+		if (selectedElement.value?._node) {
+			e.preventDefault()
+			duplicateElement()
+		}
+	}
+	
+	// Toggle grid
+	if (e.key === 'g' && !e.ctrlKey && !e.metaKey) {
+		toggleGrid()
+	}
+	
+	// Show keyboard shortcuts
+	if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+		e.preventDefault()
+		showShortcuts.value = true
+	}
+	
+	// Escape to deselect or close modals
+	if (e.key === 'Escape') {
+		if (showShortcuts.value) {
+			showShortcuts.value = false
+		} else if (showTemplates.value) {
+			showTemplates.value = false
+		} else if (showVersionHistory.value) {
+			showVersionHistory.value = false
+		} else if (showPreview.value) {
+			showPreview.value = false
+		} else if (selectedElement.value) {
+			transformer?.nodes([])
+			selectedElement.value = null
+			uiLayer?.draw()
+		}
 	}
 }
 
 function addElement(type) {
 	if (!stage || !contentLayer) return
 	const Konva = window.Konva
+	const id = `${type}-${Date.now()}`
 	let node
-	if (type === 'rect') {
-		node = new Konva.Rect({
-			x: 100,
-			y: 100,
-			width: 200,
-			height: 120,
-			fill: '#e0e7ff',
-			stroke: '#4f46e5',
-			strokeWidth: 1,
-			draggable: true,
-		})
-	} else if (type === 'text') {
-		node = new Konva.Text({
-			x: 100,
-			y: 100,
-			text: 'Text',
-			fontSize: 32,
-			fill: '#111827',
-			draggable: true,
-		})
-	} else if (type === 'circle') {
-		node = new Konva.Circle({
-			x: 200,
-			y: 200,
-			radius: 60,
-			fill: '#fef3c7',
-			stroke: '#f59e0b',
-			strokeWidth: 1,
-			draggable: true,
-		})
-	} else if (type === 'image') {
-		node = new Konva.Rect({
-			x: 100,
-			y: 100,
-			width: 200,
-			height: 150,
-			fill: '#f3f4f6',
-			stroke: '#9ca3af',
-			strokeWidth: 1,
-			draggable: true,
-		})
+
+	const baseAttrs = {
+		id,
+		draggable: true,
+		x: stageBaseWidth / 2 - 100,
+		y: stageBaseHeight / 2 - 60,
 	}
+
+	switch (type) {
+		case 'rect':
+			node = new Konva.Rect({
+				...baseAttrs,
+				width: 200,
+				height: 120,
+				fill: '#e0e7ff',
+				stroke: '#4f46e5',
+				strokeWidth: 2,
+				cornerRadius: 0,
+			})
+			break
+		case 'roundedRect':
+			node = new Konva.Rect({
+				...baseAttrs,
+				id: `rect-${Date.now()}`,
+				width: 200,
+				height: 120,
+				fill: '#dbeafe',
+				stroke: '#3b82f6',
+				strokeWidth: 2,
+				cornerRadius: 12,
+			})
+			break
+		case 'circle':
+			node = new Konva.Circle({
+				...baseAttrs,
+				x: stageBaseWidth / 2,
+				y: stageBaseHeight / 2,
+				radius: 60,
+				fill: '#fef3c7',
+				stroke: '#f59e0b',
+				strokeWidth: 2,
+			})
+			break
+		case 'triangle':
+			node = new Konva.RegularPolygon({
+				...baseAttrs,
+				id: `triangle-${Date.now()}`,
+				x: stageBaseWidth / 2,
+				y: stageBaseHeight / 2,
+				sides: 3,
+				radius: 60,
+				fill: '#d1fae5',
+				stroke: '#10b981',
+				strokeWidth: 2,
+			})
+			break
+		case 'star':
+			node = new Konva.Star({
+				...baseAttrs,
+				x: stageBaseWidth / 2,
+				y: stageBaseHeight / 2,
+				numPoints: 5,
+				innerRadius: 30,
+				outerRadius: 60,
+				fill: '#fce7f3',
+				stroke: '#ec4899',
+				strokeWidth: 2,
+			})
+			break
+		case 'line':
+			node = new Konva.Line({
+				...baseAttrs,
+				id: `line-${Date.now()}`,
+				points: [0, 0, 200, 0],
+				stroke: '#6b7280',
+				strokeWidth: 3,
+				lineCap: 'round',
+			})
+			break
+		case 'arrow':
+			node = new Konva.Arrow({
+				...baseAttrs,
+				points: [0, 0, 200, 0],
+				stroke: '#6b7280',
+				strokeWidth: 3,
+				fill: '#6b7280',
+				pointerLength: 15,
+				pointerWidth: 12,
+			})
+			break
+		case 'text':
+			node = new Konva.Text({
+				...baseAttrs,
+				text: 'Double-click to edit',
+				fontSize: 24,
+				fontFamily: 'Arial',
+				fill: '#111827',
+				padding: 5,
+			})
+			break
+		case 'heading':
+			node = new Konva.Text({
+				...baseAttrs,
+				id: `heading-${Date.now()}`,
+				text: 'Heading',
+				fontSize: 48,
+				fontFamily: 'Arial',
+				fontStyle: 'bold',
+				fill: '#111827',
+				padding: 5,
+			})
+			break
+		case 'image':
+			node = new Konva.Rect({
+				...baseAttrs,
+				id: `image-placeholder-${Date.now()}`,
+				width: 200,
+				height: 150,
+				fill: '#f3f4f6',
+				stroke: '#d1d5db',
+				strokeWidth: 2,
+				dash: [10, 5],
+			})
+			break
+		default:
+			return
+	}
+
 	if (node) {
 		contentLayer.add(node)
 		contentLayer.draw()
@@ -723,5 +868,398 @@ async function onVersionRestored() {
 	if (selectedSlide.value) {
 		await selectSlide(selectedSlide.value)
 	}
+}
+
+// Layer actions (z-index)
+function handleLayerAction(action) {
+	if (!selectedElement.value?._node) return
+	const node = selectedElement.value._node
+	switch (action) {
+		case 'bringToFront':
+			node.moveToTop()
+			break
+		case 'bringForward':
+			node.moveUp()
+			break
+		case 'sendBackward':
+			node.moveDown()
+			break
+		case 'sendToBack':
+			node.moveToBottom()
+			break
+	}
+	contentLayer.draw()
+	scheduleAutosave()
+	pushHistory()
+}
+
+// Clipboard actions
+function handleAction(action) {
+	switch (action) {
+		case 'copy':
+			copyElement()
+			break
+		case 'paste':
+			pasteElement()
+			break
+		case 'duplicate':
+			duplicateElement()
+			break
+		case 'delete':
+			deleteElement()
+			break
+	}
+}
+
+function copyElement() {
+	if (!selectedElement.value?._node) return
+	const node = selectedElement.value._node
+	clipboard.value = node.toJSON()
+	toast.success(__('Copied'))
+}
+
+function pasteElement() {
+	if (!clipboard.value || !contentLayer) return
+	const Konva = window.Konva
+	const node = Konva.Node.create(clipboard.value)
+	node.setAttrs({
+		id: `${node.className?.toLowerCase() || 'element'}-${Date.now()}`,
+		x: (node.x() || 0) + 20,
+		y: (node.y() || 0) + 20,
+	})
+	contentLayer.add(node)
+	contentLayer.draw()
+	transformer.nodes([node])
+	selectedElement.value = { ...node.getAttrs(), _node: node }
+	uiLayer.draw()
+	scheduleAutosave()
+	pushHistory()
+}
+
+function duplicateElement() {
+	if (!selectedElement.value?._node) return
+	copyElement()
+	pasteElement()
+}
+
+// Smart guides
+let guideLines = []
+const SNAP_THRESHOLD = 5
+
+function showSmartGuides(target) {
+	hideGuides()
+	if (!contentLayer || !uiLayer) return
+	
+	const Konva = window.Konva
+	const targetRect = target.getClientRect()
+	const targetCenter = {
+		x: targetRect.x + targetRect.width / 2,
+		y: targetRect.y + targetRect.height / 2,
+	}
+	
+	// Get all other shapes
+	const shapes = contentLayer.getChildren().filter(s => s !== target)
+	
+	// Stage center and edges
+	const stageGuides = [
+		{ x: stageBaseWidth / 2, type: 'vertical', label: 'center' },
+		{ y: stageBaseHeight / 2, type: 'horizontal', label: 'center' },
+		{ x: 0, type: 'vertical', label: 'edge' },
+		{ x: stageBaseWidth, type: 'vertical', label: 'edge' },
+		{ y: 0, type: 'horizontal', label: 'edge' },
+		{ y: stageBaseHeight, type: 'horizontal', label: 'edge' },
+	]
+	
+	// Check stage guides
+	stageGuides.forEach(guide => {
+		if (guide.type === 'vertical') {
+			// Check target left, center, right
+			const positions = [targetRect.x, targetCenter.x, targetRect.x + targetRect.width]
+			positions.forEach(pos => {
+				if (Math.abs(pos - guide.x) < SNAP_THRESHOLD) {
+					drawGuideLine('vertical', guide.x)
+					// Snap
+					const diff = guide.x - pos
+					target.x(target.x() + diff)
+				}
+			})
+		} else {
+			// Check target top, center, bottom
+			const positions = [targetRect.y, targetCenter.y, targetRect.y + targetRect.height]
+			positions.forEach(pos => {
+				if (Math.abs(pos - guide.y) < SNAP_THRESHOLD) {
+					drawGuideLine('horizontal', guide.y)
+					// Snap
+					const diff = guide.y - pos
+					target.y(target.y() + diff)
+				}
+			})
+		}
+	})
+	
+	// Check alignment with other shapes
+	shapes.forEach(shape => {
+		const shapeRect = shape.getClientRect()
+		const shapeCenter = {
+			x: shapeRect.x + shapeRect.width / 2,
+			y: shapeRect.y + shapeRect.height / 2,
+		}
+		
+		// Vertical alignment (left, center, right edges)
+		const vPositions = [
+			{ target: targetRect.x, shape: shapeRect.x },
+			{ target: targetRect.x, shape: shapeRect.x + shapeRect.width },
+			{ target: targetCenter.x, shape: shapeCenter.x },
+			{ target: targetRect.x + targetRect.width, shape: shapeRect.x },
+			{ target: targetRect.x + targetRect.width, shape: shapeRect.x + shapeRect.width },
+		]
+		
+		vPositions.forEach(({ target: tPos, shape: sPos }) => {
+			if (Math.abs(tPos - sPos) < SNAP_THRESHOLD) {
+				drawGuideLine('vertical', sPos)
+				const diff = sPos - tPos
+				target.x(target.x() + diff)
+			}
+		})
+		
+		// Horizontal alignment (top, center, bottom edges)
+		const hPositions = [
+			{ target: targetRect.y, shape: shapeRect.y },
+			{ target: targetRect.y, shape: shapeRect.y + shapeRect.height },
+			{ target: targetCenter.y, shape: shapeCenter.y },
+			{ target: targetRect.y + targetRect.height, shape: shapeRect.y },
+			{ target: targetRect.y + targetRect.height, shape: shapeRect.y + shapeRect.height },
+		]
+		
+		hPositions.forEach(({ target: tPos, shape: sPos }) => {
+			if (Math.abs(tPos - sPos) < SNAP_THRESHOLD) {
+				drawGuideLine('horizontal', sPos)
+				const diff = sPos - tPos
+				target.y(target.y() + diff)
+			}
+		})
+	})
+	
+	uiLayer.batchDraw()
+}
+
+function drawGuideLine(type, position) {
+	const Konva = window.Konva
+	let line
+	
+	if (type === 'vertical') {
+		line = new Konva.Line({
+			points: [position, 0, position, stageBaseHeight],
+			stroke: '#3b82f6',
+			strokeWidth: 1,
+			dash: [4, 4],
+			listening: false,
+		})
+	} else {
+		line = new Konva.Line({
+			points: [0, position, stageBaseWidth, position],
+			stroke: '#3b82f6',
+			strokeWidth: 1,
+			dash: [4, 4],
+			listening: false,
+		})
+	}
+	
+	guideLines.push(line)
+	uiLayer.add(line)
+	line.moveToBottom()
+}
+
+function hideGuides() {
+	guideLines.forEach(line => line.destroy())
+	guideLines = []
+	if (uiLayer) uiLayer.batchDraw()
+}
+
+// Grid toggle
+function toggleGrid() {
+	showGrid.value = !showGrid.value
+	drawGrid()
+}
+
+let gridLayer = null
+function drawGrid() {
+	if (!stage) return
+	
+	if (gridLayer) {
+		gridLayer.destroy()
+		gridLayer = null
+	}
+	
+	if (!showGrid.value) {
+		stage.draw()
+		return
+	}
+	
+	const Konva = window.Konva
+	gridLayer = new Konva.Layer()
+	const gridSize = 50
+	
+	// Draw vertical lines
+	for (let x = 0; x <= stageBaseWidth; x += gridSize) {
+		gridLayer.add(new Konva.Line({
+			points: [x, 0, x, stageBaseHeight],
+			stroke: '#e5e7eb',
+			strokeWidth: 1,
+			listening: false,
+		}))
+	}
+	
+	// Draw horizontal lines
+	for (let y = 0; y <= stageBaseHeight; y += gridSize) {
+		gridLayer.add(new Konva.Line({
+			points: [0, y, stageBaseWidth, y],
+			stroke: '#e5e7eb',
+			strokeWidth: 1,
+			listening: false,
+		}))
+	}
+	
+	stage.add(gridLayer)
+	gridLayer.moveToBottom()
+	stage.draw()
+}
+
+// Zoom handling
+function handleZoom(action) {
+	const zoomStep = 10
+	const minZoom = 25
+	const maxZoom = 200
+	
+	let newZoom = zoomLevel.value
+	switch (action) {
+		case 'in':
+			newZoom = Math.min(maxZoom, zoomLevel.value + zoomStep)
+			break
+		case 'out':
+			newZoom = Math.max(minZoom, zoomLevel.value - zoomStep)
+			break
+		case 'fit':
+			newZoom = 100
+			break
+	}
+	
+	zoomLevel.value = newZoom
+	const scale = newZoom / 100
+	stageDisplayWidth.value = Math.round(stageBaseWidth * scale * 0.78)
+	stageDisplayHeight.value = Math.round(stageBaseHeight * scale * 0.78)
+	
+	nextTick(() => {
+		if (stage) {
+			stage.width(stageDisplayWidth.value)
+			stage.height(stageDisplayHeight.value)
+			stage.scale({ x: scale * 0.78, y: scale * 0.78 })
+			stage.draw()
+		}
+	})
+}
+
+// Apply slide template
+function applyTemplate(template) {
+	if (!stage || !contentLayer) return
+	
+	// Clear existing content
+	contentLayer.destroyChildren()
+	
+	const Konva = window.Konva
+	
+	// Apply background color if specified
+	if (template.background && template.background !== '#ffffff') {
+		const bg = new Konva.Rect({
+			id: 'slide-background',
+			x: 0,
+			y: 0,
+			width: stageBaseWidth,
+			height: stageBaseHeight,
+			fill: template.background,
+			listening: false,
+		})
+		contentLayer.add(bg)
+	}
+	
+	// Add template elements
+	template.elements?.forEach(el => {
+		let node
+		const attrs = {
+			...el.attrs,
+			id: `${el.type.toLowerCase()}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+			draggable: true,
+		}
+		
+		switch (el.type) {
+			case 'Text':
+				node = new Konva.Text(attrs)
+				break
+			case 'Rect':
+				node = new Konva.Rect(attrs)
+				break
+			case 'Circle':
+				node = new Konva.Circle(attrs)
+				break
+			case 'Line':
+				node = new Konva.Line(attrs)
+				break
+		}
+		
+		if (node) {
+			contentLayer.add(node)
+		}
+	})
+	
+	contentLayer.draw()
+	transformer.nodes([])
+	selectedElement.value = null
+	uiLayer.draw()
+	scheduleAutosave()
+	pushHistory()
+	toast.success(__('Template applied'))
+}
+
+// Image upload handling
+function handleImageUpload(file) {
+	if (!file || !contentLayer) return
+	
+	const reader = new FileReader()
+	reader.onload = (e) => {
+		const Konva = window.Konva
+		const img = new Image()
+		img.onload = () => {
+			// Scale image to fit within reasonable bounds
+			let width = img.width
+			let height = img.height
+			const maxSize = 400
+			
+			if (width > maxSize || height > maxSize) {
+				const ratio = Math.min(maxSize / width, maxSize / height)
+				width *= ratio
+				height *= ratio
+			}
+			
+			const node = new Konva.Image({
+				id: `image-${Date.now()}`,
+				x: stageBaseWidth / 2 - width / 2,
+				y: stageBaseHeight / 2 - height / 2,
+				width,
+				height,
+				image: img,
+				draggable: true,
+			})
+			
+			contentLayer.add(node)
+			contentLayer.draw()
+			transformer.nodes([node])
+			selectedElement.value = { ...node.getAttrs(), _node: node }
+			uiLayer.draw()
+			scheduleAutosave()
+			pushHistory()
+		}
+		img.src = e.target.result
+	}
+	reader.readAsDataURL(file)
 }
 </script>
