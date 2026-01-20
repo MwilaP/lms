@@ -15,16 +15,20 @@
  "engine": "InnoDB",
  "field_order": [
   "title",
+  "language",
+  "format_type",
   "video_link",
   "tags",
   "column_break_3",
   "instructors",
   "category",
   "status",
+  "current_version",
   "column_break_htgn",
   "image",
   "card_gradient",
   "section_break_7",
+  "default_slide_settings",
   "published",
   "published_on",
   "column_break_10",
@@ -64,16 +68,44 @@
    "width": "200"
   },
   {
+   "fieldname": "language",
+   "fieldtype": "Link",
+   "label": "Language",
+   "options": "Language"
+  },
+  {
+   "default": "Classic",
+   "fieldname": "format_type",
+   "fieldtype": "Select",
+   "label": "Format Type",
+   "options": "Classic\nExpress"
+  },
+  {
    "fieldname": "description",
    "fieldtype": "Text Editor",
    "label": "Description",
    "reqd": 1
   },
   {
+   "default": "{}",
+   "fieldname": "default_slide_settings",
+   "fieldtype": "Code",
+   "label": "Default Slide Settings",
+   "options": "JSON"
+  },
+  {
    "default": "0",
    "fieldname": "published",
    "fieldtype": "Check",
    "label": "Published"
+  },
+  {
+   "default": "0",
+   "fieldname": "current_version",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Current Version",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_3",

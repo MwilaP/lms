@@ -3,20 +3,12 @@
 		class="sticky flex items-center justify-between top-0 z-10 border-b bg-surface-white px-3 py-2.5 sm:px-5"
 	>
 		<Breadcrumbs :items="breadcrumbs" />
-		<router-link
-			v-if="canCreateCourse()"
-			:to="{
-				name: 'CourseForm',
-				params: { courseName: 'new' },
-			}"
-		>
-			<Button variant="solid">
-				<template #prefix>
-					<Plus class="h-4 w-4 stroke-1.5" />
-				</template>
-				{{ __('Create') }}
-			</Button>
-		</router-link>
+		<Button v-if="canCreateCourse()" variant="solid" @click="createNewCourse">
+			<template #prefix>
+				<Plus class="h-4 w-4 stroke-1.5" />
+			</template>
+			{{ __('Create') }}
+		</Button>
 	</header>
 	<div class="p-5 pb-10">
 		<div
@@ -89,6 +81,7 @@ import {
 	Select,
 	TabButtons,
 	usePageMeta,
+	toast,
 } from 'frappe-ui'
 import { computed, inject, onMounted, ref, watch } from 'vue'
 import { Plus } from 'lucide-vue-next'
@@ -341,4 +334,25 @@ usePageMeta(() => {
 		icon: brand.favicon,
 	}
 })
+
+const createNewCourse = async () => {
+	try {
+		const data = await call('lms.lms.authoring_api.create_course', {
+			data: JSON.stringify({
+				title: __('Untitled Course'),
+				short_introduction: __('Course description'),
+				description: __('<p>Course content goes here.</p>'),
+			}),
+		})
+		if (data?.name) {
+			toast.success(__('Course created'))
+			router.push({
+				name: 'CourseAuthoring',
+				params: { courseName: data.name },
+			})
+		}
+	} catch (err) {
+		toast.error(err.messages?.[0] || __('Failed to create course'))
+	}
+}
 </script>

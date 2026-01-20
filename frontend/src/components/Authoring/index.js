@@ -1,0 +1,5 @@
+export { default as AuthoringOutline } from './AuthoringOutline.vue'
+export { default as ElementInspector } from './ElementInspector.vue'
+export { default as InteractionEditor } from './InteractionEditor.vue'
+export { default as PreviewPlayer } from './PreviewPlayer.vue'
+export { default as VersionHistory } from './VersionHistory.vue'

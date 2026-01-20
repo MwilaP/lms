@@ -6,13 +6,13 @@
 					class="sticky top-0 z-10 flex flex-col md:flex-row md:items-center justify-between border-b bg-surface-white px-3 py-2.5 sm:px-5"
 				>
 					<Breadcrumbs class="h-7" :items="breadcrumbs" />
-					<div class="flex items-center mt-3 md:mt-0">
+					<div class="flex items-center mt-3 md:mt-0 space-x-2">
 						<Button v-if="courseResource.data?.name" @click="trashCourse()">
 							<template #icon>
 								<Trash2 class="w-4 h-4 stroke-1.5" />
 							</template>
 						</Button>
-						<Button variant="solid" @click="submitCourse()" class="ml-2">
+						<Button variant="solid" @click="submitCourse()">
 							<span>
 								{{ __('Save') }}
 							</span>
@@ -303,13 +303,49 @@
 					</div> -->
 				</div>
 			</div>
-			<div class="border-l">
-				<CourseOutline
-					v-if="courseResource.data"
-					:courseName="courseResource.data.name"
-					:title="__('Course Outline')"
-					:allowEdit="true"
-				/>
+			<div class="border-l bg-surface-gray-1">
+				<div v-if="courseResource.data" class="p-6 h-full flex flex-col">
+					<div class="text-lg font-semibold text-ink-gray-9 mb-4">
+						{{ __('Course Content') }}
+					</div>
+					<div class="flex-1 flex flex-col items-center justify-center text-center">
+						<div class="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center mb-4">
+							<Palette class="w-10 h-10 text-blue-600" />
+						</div>
+						<h3 class="text-lg font-semibold text-ink-gray-9 mb-2">
+							{{ __('Visual Course Editor') }}
+						</h3>
+						<p class="text-sm text-ink-gray-6 mb-6 max-w-xs">
+							{{ __('Create chapters, lessons, and interactive slides with our professional authoring tool.') }}
+						</p>
+						<router-link
+							:to="{ name: 'CourseAuthoring', params: { courseName: courseResource.data.name } }"
+						>
+							<Button variant="solid" size="lg">
+								<template #prefix>
+									<Palette class="w-4 h-4" />
+								</template>
+								{{ __('Open Course Editor') }}
+							</Button>
+						</router-link>
+					</div>
+					<div class="mt-auto pt-6 border-t">
+						<CourseOutline
+							:courseName="courseResource.data.name"
+							:title="__('Current Outline')"
+							:allowEdit="false"
+							:showOutline="true"
+						/>
+					</div>
+				</div>
+				<div v-else class="p-6 h-full flex flex-col items-center justify-center text-center">
+					<div class="w-16 h-16 rounded-full bg-surface-gray-3 flex items-center justify-center mb-4">
+						<Palette class="w-8 h-8 text-ink-gray-5" />
+					</div>
+					<p class="text-sm text-ink-gray-5 max-w-xs">
+						{{ __('Save your course first to start building content with the visual editor.') }}
+					</p>
+				</div>
 			</div>
 		</div>
 	</div>
@@ -336,7 +372,7 @@ import {
 	watch,
 	getCurrentInstance,
 } from 'vue'
-import { Image, Trash2, X } from 'lucide-vue-next'
+import { Image, Palette, Trash2, X } from 'lucide-vue-next'
 import { useRouter } from 'vue-router'
 import { capture, startRecording, stopRecording } from '@/telemetry'
 import { useOnboarding } from 'frappe-ui/frappe'
@@ -546,7 +582,7 @@ const createCourse = () => {
 			capture('course_created')
 			toast.success(__('Course created successfully'))
 			router.push({
-				name: 'CourseForm',
+				name: 'CourseAuthoring',
 				params: { courseName: data.name },
 			})
 		},

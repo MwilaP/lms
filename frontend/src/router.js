@@ -142,6 +142,12 @@ const routes = [
 		props: true,
 	},
 	{
+		path: '/courses/:courseName/author',
+		name: 'CourseAuthoring',
+		component: () => import('@/pages/CourseAuthoring.vue'),
+		props: true,
+	},
+	{
 		path: '/courses/:courseName/learn/:chapterNumber-:lessonNumber/edit',
 		name: 'LessonForm',
 		component: () => import('@/pages/LessonForm.vue'),

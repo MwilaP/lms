@@ -9,9 +9,11 @@
  "engine": "InnoDB",
  "field_order": [
   "title",
+  "description",
   "column_break_3",
   "course",
   "course_title",
+  "thumbnail",
   "scorm_section",
   "is_scorm_package",
   "scorm_package",
@@ -39,8 +41,18 @@
    "reqd": 1
   },
   {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
    "fieldname": "column_break_3",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "thumbnail",
+   "fieldtype": "Attach Image",
+   "label": "Thumbnail"
   },
   {
    "fieldname": "section_break_5",

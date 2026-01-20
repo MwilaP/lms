@@ -9,6 +9,7 @@
  "engine": "InnoDB",
  "field_order": [
   "title",
+  "description",
   "include_in_preview",
   "column_break_4",
   "chapter",
@@ -58,6 +59,11 @@
    "in_standard_filter": 1,
    "label": "Title",
    "reqd": 1
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
   },
   {
    "fieldname": "section_break_6",
