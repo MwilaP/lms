@@ -96,6 +96,45 @@
 			/>
 		</div>
 
+		<!-- Font Selector (when text is selected) -->
+		<div v-if="isTextSelected" class="flex items-center border-r pr-2 mr-1 space-x-2 bg-blue-50 px-2 py-1 rounded-lg">
+			<div class="flex items-center space-x-1">
+				<Type class="w-3.5 h-3.5 text-blue-600" />
+				<select
+					:value="currentFont"
+					@change="$emit('font-change', $event.target.value)"
+					class="text-sm border border-blue-200 rounded-md px-2 py-1.5 bg-white text-ink-gray-8 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-32 cursor-pointer"
+					title="Font Family"
+				>
+					<option v-for="font in fonts" :key="font" :value="font" :style="{ fontFamily: font }">{{ font }}</option>
+				</select>
+			</div>
+			<select
+				:value="currentFontSize"
+				@change="$emit('font-size-change', parseInt($event.target.value))"
+				class="text-sm border border-blue-200 rounded-md px-2 py-1.5 bg-white text-ink-gray-8 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-20 cursor-pointer"
+				title="Font Size"
+			>
+				<option v-for="size in fontSizes" :key="size" :value="size">{{ size }}px</option>
+			</select>
+			<div class="flex items-center border-l border-blue-200 pl-2 space-x-0.5">
+				<ToolButton
+					:active="isBold"
+					@click="$emit('toggle-bold')"
+					title="Bold (Ctrl+B)"
+				>
+					<Bold class="w-4 h-4" />
+				</ToolButton>
+				<ToolButton
+					:active="isItalic"
+					@click="$emit('toggle-italic')"
+					title="Italic (Ctrl+I)"
+				>
+					<Italic class="w-4 h-4" />
+				</ToolButton>
+			</div>
+		</div>
+
 		<!-- Layer Controls -->
 		<div class="flex items-center border-r pr-2 mr-1">
 			<ToolButton
@@ -256,6 +295,8 @@ import {
 	ZoomIn,
 	ZoomOut,
 	Maximize2,
+	Bold,
+	Italic,
 } from 'lucide-vue-next'
 
 import ToolButton from './ToolButton.vue'
@@ -270,6 +311,11 @@ const props = defineProps({
 	snapEnabled: { type: Boolean, default: true },
 	zoomLevel: { type: Number, default: 100 },
 	activeTool: { type: String, default: 'select' },
+	isTextSelected: { type: Boolean, default: false },
+	currentFont: { type: String, default: 'Arial' },
+	currentFontSize: { type: Number, default: 24 },
+	isBold: { type: Boolean, default: false },
+	isItalic: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -284,9 +330,28 @@ const emit = defineEmits([
 	'tool-change',
 	'image-upload',
 	'show-templates',
+	'font-change',
+	'font-size-change',
+	'toggle-bold',
+	'toggle-italic',
 ])
 
 const imageInput = ref(null)
+
+const fonts = [
+	'Arial',
+	'Helvetica',
+	'Times New Roman',
+	'Georgia',
+	'Verdana',
+	'Trebuchet MS',
+	'Comic Sans MS',
+	'Impact',
+	'Courier New',
+	'Lucida Console',
+]
+
+const fontSizes = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42, 48, 56, 64, 72, 96]
 
 function setTool(tool) {
 	emit('tool-change', tool)

@@ -15,6 +15,25 @@
 			</Button>
 		</div>
 
+		<!-- Image Placeholder Upload -->
+		<div v-if="isImagePlaceholder" class="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+			<div class="flex items-center space-x-2 mb-2">
+				<ImageIcon class="w-4 h-4 text-blue-600" />
+				<span class="text-sm font-medium text-blue-800">{{ __('Image Placeholder') }}</span>
+			</div>
+			<p class="text-xs text-blue-600 mb-3">{{ __('Click below to upload an image to replace this placeholder') }}</p>
+			<label class="flex items-center justify-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg cursor-pointer hover:bg-blue-700 transition-colors">
+				<Upload class="w-4 h-4 mr-2" />
+				{{ __('Upload Image') }}
+				<input
+					type="file"
+					accept="image/*"
+					class="hidden"
+					@change="handlePlaceholderImageUpload"
+				/>
+			</label>
+		</div>
+
 		<!-- Element ID -->
 		<div class="space-y-1">
 			<label class="text-xs text-ink-gray-5">{{ __('Element ID') }}</label>
@@ -375,6 +394,7 @@ import {
 	AlignCenter,
 	AlignRight,
 	Ban,
+	Upload,
 } from 'lucide-vue-next'
 
 const props = defineProps({
@@ -384,29 +404,59 @@ const props = defineProps({
 	},
 })
 
-const emit = defineEmits(['update', 'delete'])
+const emit = defineEmits(['update', 'delete', 'image-upload'])
 
 const elementType = computed(() => {
-	const className = props.element.className || props.element._node?.className?.() || 'Element'
-	return className.replace('Konva.', '')
+	// Support both Fabric.js type and legacy Konva className
+	const type = props.element.type || props.element.className || props.element._node?.className?.() || 'Element'
+	
+	// Check for layout-block (PowerPoint-style text container)
+	if (type === 'layout-block' || props.element.role === 'layout-block') {
+		return 'Text Block'
+	}
+	
+	// Normalize Fabric.js types to display names
+	const typeMap = {
+		'rect': 'Rect',
+		'circle': 'Circle',
+		'triangle': 'Triangle',
+		'polygon': 'Polygon',
+		'group': 'Group',
+		'i-text': 'Text',
+		'text': 'Text',
+		'textbox': 'Text',
+		'image': 'Image',
+		'line': 'Line',
+		'path': 'Path',
+	}
+	return typeMap[type?.toLowerCase()] || type.replace('Konva.', '')
 })
 
 const elementIcon = computed(() => {
 	const icons = {
+		'Text Block': Type,
 		Rect: Square,
 		Circle: Circle,
+		Triangle: Triangle,
+		Polygon: Star,
+		Group: Square,
 		Text: Type,
 		Image: ImageIcon,
 		Line: Minus,
 		Arrow: Minus,
 		Star: Star,
+		Path: Minus,
 		RegularPolygon: Triangle,
 	}
 	return icons[elementType.value] || Square
 })
 
 const isText = computed(() => {
-	return elementType.value === 'Text'
+	const type = props.element.type || ''
+	const role = props.element.role || ''
+	// Layout blocks are text elements
+	if (role === 'layout-block' || type === 'layout-block') return true
+	return elementType.value === 'Text' || elementType.value === 'Text Block' || type === 'i-text' || type === 'text' || type === 'textbox'
 })
 
 const hasSize = computed(() => {
@@ -414,11 +464,27 @@ const hasSize = computed(() => {
 })
 
 const hasStroke = computed(() => {
-	return props.element.stroke !== undefined || ['Rect', 'Circle', 'Ellipse', 'Line', 'Arrow', 'Path', 'RegularPolygon', 'Star'].includes(elementType.value)
+	return props.element.stroke !== undefined || ['Rect', 'Circle', 'Triangle', 'Polygon', 'Ellipse', 'Line', 'Arrow', 'Path', 'RegularPolygon', 'Star'].includes(elementType.value)
+})
+
+const isImagePlaceholder = computed(() => {
+	const id = props.element.id || ''
+	// Check for Fabric.js isPlaceholder flag or dashed stroke
+	const hasDash = props.element.strokeDashArray?.length > 0 || (props.element.dash && props.element.dash.length > 0)
+	const isPlaceholderFlag = props.element.isPlaceholder || props.element._fabricObject?.isPlaceholder
+	return id.includes('image-placeholder') || isPlaceholderFlag || (elementType.value === 'Rect' && hasDash)
 })
 
 function updateAttr(key, value) {
 	emit('update', { [key]: value })
+}
+
+function handlePlaceholderImageUpload(e) {
+	const file = e.target.files?.[0]
+	if (file) {
+		emit('image-upload', file)
+	}
+	e.target.value = ''
 }
 
 function toggleFontStyle(style) {
