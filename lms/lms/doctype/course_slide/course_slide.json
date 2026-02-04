@@ -1,123 +1,136 @@
 {
- "actions": [],
- "allow_rename": 1,
- "autoname": "format:{####} {title}",
- "creation": "2026-01-16 00:00:00.000000",
- "doctype": "DocType",
- "editable_grid": 1,
- "engine": "InnoDB",
- "field_order": [
-  "title",
-  "idx",
-  "column_break_3",
-  "lesson",
-  "course",
-  "thumbnail",
-  "section_break_7",
-  "konva_json"
- ],
- "fields": [
-  {
-   "fieldname": "lesson",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "in_standard_filter": 1,
-   "label": "Lesson",
-   "options": "Course Lesson",
-   "reqd": 1
-  },
-  {
-   "fetch_from": "lesson.course",
-   "fieldname": "course",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Course",
-   "options": "LMS Course",
-   "read_only": 1
-  },
-  {
-   "fieldname": "title",
-   "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Title",
-   "reqd": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "idx",
-   "fieldtype": "Int",
-   "in_list_view": 1,
-   "label": "Order"
-  },
-  {
-   "fieldname": "column_break_3",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "thumbnail",
-   "fieldtype": "Attach Image",
-   "label": "Thumbnail"
-  },
-  {
-   "fieldname": "section_break_7",
-   "fieldtype": "Section Break"
-  },
-  {
-   "fieldname": "konva_json",
-   "fieldtype": "Code",
-   "label": "Konva JSON",
-   "options": "JSON"
-  }
- ],
- "index_web_pages_for_search": 1,
- "links": [],
- "modified": "2026-01-16 00:00:00.000000",
- "modified_by": "Administrator",
- "module": "LMS",
- "name": "Course Slide",
- "naming_rule": "Expression",
- "owner": "Administrator",
- "permissions": [
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "System Manager",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "create": 1,
-   "email": 1,
-   "export": 1,
-   "if_owner": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Course Creator",
-   "share": 1,
-   "write": 1
-  },
-  {
-   "create": 1,
-   "delete": 1,
-   "email": 1,
-   "export": 1,
-   "print": 1,
-   "read": 1,
-   "report": 1,
-   "role": "Moderator",
-   "share": 1,
-   "write": 1
-  }
- ],
- "sort_field": "modified",
- "sort_order": "DESC",
- "states": [],
- "title_field": "title",
- "track_changes": 1
+    "actions": [],
+    "allow_rename": 1,
+    "autoname": "format:{####} {title}",
+    "creation": "2026-01-16 00:00:00.000000",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "field_order": [
+        "title",
+        "idx",
+        "column_break_3",
+        "lesson",
+        "course",
+        "thumbnail",
+        "section_break_7",
+        "konva_json",
+        "notes_section",
+        "notes"
+    ],
+    "fields": [
+        {
+            "fieldname": "lesson",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Lesson",
+            "options": "Course Lesson",
+            "reqd": 1
+        },
+        {
+            "fetch_from": "lesson.course",
+            "fieldname": "course",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Course",
+            "options": "LMS Course",
+            "read_only": 1
+        },
+        {
+            "fieldname": "title",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Title",
+            "reqd": 1
+        },
+        {
+            "default": "0",
+            "fieldname": "idx",
+            "fieldtype": "Int",
+            "in_list_view": 1,
+            "label": "Order"
+        },
+        {
+            "fieldname": "column_break_3",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "thumbnail",
+            "fieldtype": "Attach Image",
+            "label": "Thumbnail"
+        },
+        {
+            "fieldname": "section_break_7",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "konva_json",
+            "fieldtype": "Code",
+            "label": "Konva JSON",
+            "options": "JSON"
+        },
+        {
+            "fieldname": "notes_section",
+            "fieldtype": "Section Break",
+            "label": "Presenter Notes"
+        },
+        {
+            "fieldname": "notes",
+            "fieldtype": "Text",
+            "label": "Notes",
+            "description": "Speaker notes visible only in presenter view"
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2026-02-04 12:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "LMS",
+    "name": "Course Slide",
+    "naming_rule": "Expression",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        },
+        {
+            "create": 1,
+            "email": 1,
+            "export": 1,
+            "if_owner": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "Course Creator",
+            "share": 1,
+            "write": 1
+        },
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "Moderator",
+            "share": 1,
+            "write": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": [],
+    "title_field": "title",
+    "track_changes": 1
 }

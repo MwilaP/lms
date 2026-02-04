@@ -211,6 +211,17 @@
 			</ToolButton>
 		</div>
 
+		<!-- Alignment & Distribution -->
+		<div class="flex items-center border-r pr-2 mr-1">
+			<AlignmentDropdown
+				:hasSelection="hasSelection"
+				:multipleSelected="multipleSelected"
+				@align="$emit('align', $event)"
+				@distribute="$emit('distribute', $event)"
+				@match-size="$emit('match-size', $event)"
+			/>
+		</div>
+
 		<!-- Edit Actions -->
 		<div class="flex items-center border-r pr-2 mr-1">
 			<ToolButton
@@ -347,6 +358,7 @@ import {
 } from 'lucide-vue-next'
 
 import ToolButton from './ToolButton.vue'
+import AlignmentDropdown from './AlignmentDropdown.vue'
 
 const props = defineProps({
 	disabled: { type: Boolean, default: false },
@@ -364,6 +376,7 @@ const props = defineProps({
 	isBold: { type: Boolean, default: false },
 	isItalic: { type: Boolean, default: false },
 	selectedElementType: { type: String, default: null },
+	multipleSelected: { type: Boolean, default: false },
 })
 
 const emit = defineEmits([
@@ -383,6 +396,9 @@ const emit = defineEmits([
 	'toggle-bold',
 	'toggle-italic',
 	'text-align',
+	'align',
+	'distribute',
+	'match-size',
 ])
 
 function getElementIcon(type) {

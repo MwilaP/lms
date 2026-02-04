@@ -249,9 +249,17 @@ def get_slide(slide):
 	return frappe.db.get_value(
 		"Course Slide",
 		slide,
-		["name", "title", "idx", "lesson", "course", "thumbnail", "konva_json"],
+		["name", "title", "idx", "lesson", "course", "thumbnail", "konva_json", "notes"],
 		as_dict=True,
 	)
+
+
+@frappe.whitelist()
+def save_slide_notes(slide, notes):
+	"""Save presenter notes for a slide."""
+	_require_course_author()
+	frappe.db.set_value("Course Slide", slide, "notes", notes)
+	return {"ok": True}
 
 
 @frappe.whitelist()
@@ -510,6 +518,16 @@ def delete_slide(slide):
 def save_konva_json(slide, konva_json):
 	_require_course_author()
 	frappe.db.set_value("Course Slide", slide, "konva_json", konva_json)
+	return {"ok": True}
+
+
+@frappe.whitelist()
+def save_slide_thumbnail(slide, thumbnail):
+	"""Save slide thumbnail (base64 data URL or file path)."""
+	_require_course_author()
+	# If thumbnail is a data URL, we store it directly
+	# Course Slide already has a thumbnail field (Attach Image type)
+	frappe.db.set_value("Course Slide", slide, "thumbnail", thumbnail)
 	return {"ok": True}
 
 

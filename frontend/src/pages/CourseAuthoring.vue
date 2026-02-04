@@ -117,6 +117,7 @@
 					:isBold="isBold"
 					:isItalic="isItalic"
 					:selectedElementType="selectedElementType"
+					:multipleSelected="multipleSelected"
 					@add-element="addElement"
 					@layer-action="handleLayerAction"
 					@action="handleAction"
@@ -133,6 +134,9 @@
 					@toggle-bold="handleToggleBold"
 					@toggle-italic="handleToggleItalic"
 					@text-align="handleTextAlign"
+					@align="handleAlign"
+					@distribute="handleDistribute"
+					@match-size="handleMatchSize"
 				/>
 
 				<div class="flex-1 flex overflow-hidden">
@@ -183,6 +187,42 @@
 							</div>
 						</div>
 					</aside>
+				</div>
+
+				<!-- Presenter Notes Panel -->
+				<div v-if="selectedSlide" class="bg-surface-white border-t shrink-0">
+					<div 
+						class="flex items-center justify-between px-4 py-2 cursor-pointer hover:bg-surface-gray-1 transition-colors"
+						@click="notesExpanded = !notesExpanded"
+					>
+						<div class="flex items-center space-x-2">
+							<StickyNote class="w-4 h-4 text-ink-gray-5" />
+							<span class="text-sm font-medium text-ink-gray-7">{{ __('Presenter Notes') }}</span>
+							<span v-if="currentSlideNotes" class="text-xs text-ink-gray-4">({{ currentSlideNotes.length }} chars)</span>
+						</div>
+						<ChevronUp 
+							class="w-4 h-4 text-ink-gray-5 transition-transform duration-200"
+							:class="{ 'rotate-180': !notesExpanded }"
+						/>
+					</div>
+					<Transition
+						enter-active-class="transition-all duration-200 ease-out"
+						enter-from-class="opacity-0 max-h-0"
+						enter-to-class="opacity-100 max-h-40"
+						leave-active-class="transition-all duration-150 ease-in"
+						leave-from-class="opacity-100 max-h-40"
+						leave-to-class="opacity-0 max-h-0"
+					>
+						<div v-show="notesExpanded" class="overflow-hidden">
+							<textarea
+								v-model="currentSlideNotes"
+								class="w-full h-24 px-4 py-2 text-sm text-ink-gray-7 bg-surface-gray-1 resize-none border-none focus:ring-0 focus:outline-none placeholder:text-ink-gray-4"
+								:placeholder="__('Add speaker notes for this slide... These will be visible in presenter view but hidden during presentation.')"
+								@blur="saveNotes"
+								@input="scheduleNoteAutosave"
+							/>
+						</div>
+					</Transition>
 				</div>
 
 				<div class="bg-surface-white border-t px-4 py-3 shrink-0">
@@ -239,6 +279,8 @@ import {
 	Upload,
 	Plus,
 	Settings,
+	ChevronUp,
+	StickyNote,
 } from 'lucide-vue-next'
 import AuthoringOutline from '@/components/Authoring/AuthoringOutline.vue'
 import ElementInspector from '@/components/Authoring/ElementInspector.vue'
@@ -280,6 +322,11 @@ const zoomLevel = ref(100)
 const clipboard = ref(null)
 const showTemplates = ref(false)
 const showShortcuts = ref(false)
+
+// Presenter Notes state
+const notesExpanded = ref(false)
+const currentSlideNotes = ref('')
+let notesAutosaveTimeout = null
 
 // Canvas dimensions (16:9 aspect ratio)
 const canvasBaseWidth = 1024
@@ -395,6 +442,15 @@ const selectedElementType = computed(() => {
 const currentSlideBackground = computed(() => {
 	if (!canvas) return '#FFFFFF'
 	return canvas.backgroundColor || '#FFFFFF'
+})
+
+// Check if multiple elements are selected (for alignment/distribution tools)
+const multipleSelected = computed(() => {
+	if (!canvas) return false
+	const activeObject = canvas.getActiveObject()
+	if (!activeObject) return false
+	// Check if it's an ActiveSelection (multiple objects selected)
+	return activeObject.type === 'activeSelection' && activeObject._objects?.length >= 2
 })
 
 // Font change handlers - work with both layout blocks and direct text objects
@@ -748,6 +804,46 @@ function handleApplyTheme(data) {
 
 function onInteractionUpdate() {
 	// Interactions saved - could refresh or show status
+}
+
+/**
+ * ============================================================================
+ * PRESENTER NOTES SYSTEM
+ * ============================================================================
+ */
+
+/**
+ * Schedule autosave for presenter notes (with debounce)
+ */
+function scheduleNoteAutosave() {
+	if (notesAutosaveTimeout) clearTimeout(notesAutosaveTimeout)
+	notesAutosaveTimeout = setTimeout(() => {
+		saveNotes()
+	}, 1500)
+}
+
+/**
+ * Save presenter notes to backend
+ */
+async function saveNotes() {
+	if (!selectedSlide.value) return
+	
+	// Skip if notes haven't changed
+	if (currentSlideNotes.value === (selectedSlideData.value?.notes || '')) return
+	
+	try {
+		await call('lms.lms.authoring_api.save_slide_notes', {
+			slide: selectedSlide.value,
+			notes: currentSlideNotes.value,
+		})
+		// Update local cache
+		if (selectedSlideData.value) {
+			selectedSlideData.value.notes = currentSlideNotes.value
+		}
+	} catch (e) {
+		console.error('Failed to save notes:', e)
+		toast.error(__('Failed to save presenter notes'))
+	}
 }
 
 /**
@@ -1310,6 +1406,11 @@ async function selectSlide(slideName) {
 		exitLayoutBlockEditMode()
 	}
 	
+	// Save current notes before switching
+	if (selectedSlide.value && currentSlideNotes.value !== selectedSlideData.value?.notes) {
+		await saveNotes()
+	}
+	
 	selectedSlide.value = slideName
 	selectedElement.value = null
 
@@ -1327,6 +1428,8 @@ async function selectSlide(slideName) {
 	try {
 		const data = await call('lms.lms.authoring_api.get_slide', { slide: slideName })
 		selectedSlideData.value = data
+		// Load presenter notes for this slide
+		currentSlideNotes.value = data.notes || ''
 		await nextTick()
 		initCanvas(data.konva_json)
 	} catch (e) {
@@ -2125,6 +2228,18 @@ async function saveSlide() {
 			slide: selectedSlide.value,
 			konva_json: json,
 		})
+		
+		// Generate and save thumbnail
+		const thumbnail = generateThumbnail()
+		if (thumbnail) {
+			await call('lms.lms.authoring_api.save_slide_thumbnail', {
+				slide: selectedSlide.value,
+				thumbnail: thumbnail,
+			})
+			// Update local slide thumbnail in outline
+			updateSlideInOutline(selectedSlide.value, { thumbnail })
+		}
+		
 		saveStatus.value = __('Saved')
 		setTimeout(() => {
 			if (saveStatus.value === __('Saved')) saveStatus.value = ''
@@ -2132,6 +2247,46 @@ async function saveSlide() {
 	} catch (e) {
 		saveStatus.value = __('Save failed')
 		toast.error(__('Failed to save slide'))
+	}
+}
+
+/**
+ * Generate a thumbnail image from the current canvas
+ * Returns a base64 data URL (JPEG format, scaled down for efficiency)
+ */
+function generateThumbnail() {
+	if (!canvas) return null
+	
+	try {
+		// Generate thumbnail at 200px width (maintaining aspect ratio)
+		const scale = 200 / canvasBaseWidth
+		const dataUrl = canvas.toDataURL({
+			format: 'jpeg',
+			quality: 0.7,
+			multiplier: scale,
+		})
+		return dataUrl
+	} catch (e) {
+		console.error('Failed to generate thumbnail:', e)
+		return null
+	}
+}
+
+/**
+ * Update a slide in the outline with new data (e.g., thumbnail)
+ */
+function updateSlideInOutline(slideName, data) {
+	if (!outline.value?.chapters) return
+	
+	for (const ch of outline.value.chapters) {
+		for (const le of ch.lessons || []) {
+			for (const sl of le.slides || []) {
+				if (sl.name === slideName) {
+					Object.assign(sl, data)
+					return
+				}
+			}
+		}
 	}
 }
 
@@ -2410,6 +2565,234 @@ function handleLayerAction(action) {
 		case 'sendToBack':
 			canvas.sendToBack(obj)
 			break
+	}
+	canvas.renderAll()
+	scheduleAutosave()
+	pushHistory()
+}
+
+/**
+ * ============================================================================
+ * ALIGNMENT & DISTRIBUTION TOOLS - PowerPoint-style Arrange
+ * ============================================================================
+ */
+
+/**
+ * Get all selected objects for alignment operations
+ */
+function getSelectedObjects() {
+	if (!canvas) return []
+	const activeObject = canvas.getActiveObject()
+	if (!activeObject) return []
+	
+	if (activeObject.type === 'activeSelection') {
+		return activeObject._objects || []
+	}
+	return [activeObject]
+}
+
+/**
+ * Handle element alignment (align-left, align-center-h, align-right, align-top, align-center-v, align-bottom)
+ */
+function handleAlign(action) {
+	if (!canvas) return
+	const objects = getSelectedObjects()
+	if (objects.length === 0) return
+	
+	// For single object alignment, align to canvas
+	// For multiple objects, align to the selection bounds
+	const activeObject = canvas.getActiveObject()
+	let bounds
+	
+	if (objects.length === 1) {
+		// Align to canvas
+		bounds = {
+			left: 0,
+			top: 0,
+			width: canvasBaseWidth,
+			height: canvasBaseHeight
+		}
+	} else {
+		// Align to selection bounds
+		bounds = activeObject.getBoundingRect(true, true)
+	}
+	
+	switch (action) {
+		case 'align-left':
+			if (objects.length === 1) {
+				objects[0].set('left', 0)
+			} else {
+				const minLeft = Math.min(...objects.map(o => o.left))
+				objects.forEach(o => o.set('left', minLeft))
+			}
+			break
+			
+		case 'align-center-h':
+			if (objects.length === 1) {
+				const objWidth = objects[0].width * objects[0].scaleX
+				objects[0].set('left', (canvasBaseWidth - objWidth) / 2)
+			} else {
+				const centerX = bounds.left + bounds.width / 2
+				objects.forEach(o => {
+					const objWidth = o.width * o.scaleX
+					o.set('left', centerX - objWidth / 2)
+				})
+			}
+			break
+			
+		case 'align-right':
+			if (objects.length === 1) {
+				const objWidth = objects[0].width * objects[0].scaleX
+				objects[0].set('left', canvasBaseWidth - objWidth)
+			} else {
+				const maxRight = Math.max(...objects.map(o => o.left + o.width * o.scaleX))
+				objects.forEach(o => {
+					const objWidth = o.width * o.scaleX
+					o.set('left', maxRight - objWidth)
+				})
+			}
+			break
+			
+		case 'align-top':
+			if (objects.length === 1) {
+				objects[0].set('top', 0)
+			} else {
+				const minTop = Math.min(...objects.map(o => o.top))
+				objects.forEach(o => o.set('top', minTop))
+			}
+			break
+			
+		case 'align-center-v':
+			if (objects.length === 1) {
+				const objHeight = objects[0].height * objects[0].scaleY
+				objects[0].set('top', (canvasBaseHeight - objHeight) / 2)
+			} else {
+				const centerY = bounds.top + bounds.height / 2
+				objects.forEach(o => {
+					const objHeight = o.height * o.scaleY
+					o.set('top', centerY - objHeight / 2)
+				})
+			}
+			break
+			
+		case 'align-bottom':
+			if (objects.length === 1) {
+				const objHeight = objects[0].height * objects[0].scaleY
+				objects[0].set('top', canvasBaseHeight - objHeight)
+			} else {
+				const maxBottom = Math.max(...objects.map(o => o.top + o.height * o.scaleY))
+				objects.forEach(o => {
+					const objHeight = o.height * o.scaleY
+					o.set('top', maxBottom - objHeight)
+				})
+			}
+			break
+	}
+	
+	// Update the active selection and render
+	if (activeObject.type === 'activeSelection') {
+		activeObject.setCoords()
+	}
+	canvas.renderAll()
+	scheduleAutosave()
+	pushHistory()
+}
+
+/**
+ * Handle element distribution (distribute-h, distribute-v)
+ * Requires 3+ elements to be meaningful
+ */
+function handleDistribute(action) {
+	if (!canvas) return
+	const objects = getSelectedObjects()
+	if (objects.length < 3) return
+	
+	if (action === 'distribute-h') {
+		// Sort by horizontal position
+		const sorted = [...objects].sort((a, b) => a.left - b.left)
+		
+		// Calculate total space and object widths
+		const firstLeft = sorted[0].left
+		const lastRight = sorted[sorted.length - 1].left + sorted[sorted.length - 1].width * sorted[sorted.length - 1].scaleX
+		const totalSpace = lastRight - firstLeft
+		const totalObjectWidth = sorted.reduce((sum, o) => sum + o.width * o.scaleX, 0)
+		const gap = (totalSpace - totalObjectWidth) / (objects.length - 1)
+		
+		// Distribute objects
+		let currentLeft = firstLeft
+		sorted.forEach((obj, idx) => {
+			if (idx > 0) {
+				obj.set('left', currentLeft)
+			}
+			currentLeft += obj.width * obj.scaleX + gap
+		})
+	} else if (action === 'distribute-v') {
+		// Sort by vertical position
+		const sorted = [...objects].sort((a, b) => a.top - b.top)
+		
+		// Calculate total space and object heights
+		const firstTop = sorted[0].top
+		const lastBottom = sorted[sorted.length - 1].top + sorted[sorted.length - 1].height * sorted[sorted.length - 1].scaleY
+		const totalSpace = lastBottom - firstTop
+		const totalObjectHeight = sorted.reduce((sum, o) => sum + o.height * o.scaleY, 0)
+		const gap = (totalSpace - totalObjectHeight) / (objects.length - 1)
+		
+		// Distribute objects
+		let currentTop = firstTop
+		sorted.forEach((obj, idx) => {
+			if (idx > 0) {
+				obj.set('top', currentTop)
+			}
+			currentTop += obj.height * obj.scaleY + gap
+		})
+	}
+	
+	// Update the active selection and render
+	const activeObject = canvas.getActiveObject()
+	if (activeObject?.type === 'activeSelection') {
+		activeObject.setCoords()
+	}
+	canvas.renderAll()
+	scheduleAutosave()
+	pushHistory()
+}
+
+/**
+ * Handle match size operations (match-width, match-height, match-both)
+ * Uses the first selected object as the reference size
+ */
+function handleMatchSize(action) {
+	if (!canvas) return
+	const objects = getSelectedObjects()
+	if (objects.length < 2) return
+	
+	// Use the first object as reference
+	const reference = objects[0]
+	const refWidth = reference.width * reference.scaleX
+	const refHeight = reference.height * reference.scaleY
+	
+	objects.slice(1).forEach(obj => {
+		const currentWidth = obj.width * obj.scaleX
+		const currentHeight = obj.height * obj.scaleY
+		
+		switch (action) {
+			case 'match-width':
+				obj.set('scaleX', refWidth / obj.width)
+				break
+			case 'match-height':
+				obj.set('scaleY', refHeight / obj.height)
+				break
+			case 'match-both':
+				obj.set('scaleX', refWidth / obj.width)
+				obj.set('scaleY', refHeight / obj.height)
+				break
+		}
+	})
+	
+	// Update the active selection and render
+	const activeObject = canvas.getActiveObject()
+	if (activeObject?.type === 'activeSelection') {
+		activeObject.setCoords()
 	}
 	canvas.renderAll()
 	scheduleAutosave()
