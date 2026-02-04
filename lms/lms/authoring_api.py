@@ -515,6 +515,34 @@ def delete_slide(slide):
 
 
 @frappe.whitelist()
+def duplicate_slide(slide, lesson=None):
+	"""Duplicate a slide, optionally to a different lesson."""
+	_require_course_author()
+	
+	# Get source slide
+	source = frappe.get_doc("Course Slide", slide)
+	
+	# Determine target lesson
+	target_lesson = lesson or source.lesson
+	
+	# Get next index for the target lesson
+	next_idx = _get_next_slide_idx(target_lesson)
+	
+	# Create new slide
+	new_slide = frappe.new_doc("Course Slide")
+	new_slide.lesson = target_lesson
+	new_slide.course = _get_course_for_lesson(target_lesson)
+	new_slide.title = f"{source.title} (Copy)"
+	new_slide.idx = next_idx
+	new_slide.konva_json = source.konva_json
+	new_slide.thumbnail = source.thumbnail
+	new_slide.notes = source.notes
+	new_slide.insert()
+	
+	return {"ok": True, "slide": new_slide.as_dict()}
+
+
+@frappe.whitelist()
 def save_konva_json(slide, konva_json):
 	_require_course_author()
 	frappe.db.set_value("Course Slide", slide, "konva_json", konva_json)

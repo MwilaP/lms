@@ -79,6 +79,7 @@ let stage = null
 let contentLayer = null
 let interactions = []
 let timers = []
+let currentTransition = null // Store current slide transition settings
 
 const allSlides = computed(() => {
 	const slides = []
@@ -96,7 +97,7 @@ const currentSlide = computed(() => allSlides.value[currentSlideIndex.value])
 const currentSlideTitle = computed(() => currentSlide.value?.title || `Slide ${currentSlideIndex.value + 1}`)
 
 onMounted(async () => {
-	await loadKonva()
+	await loadFabric()
 	handleResize()
 	window.addEventListener('resize', handleResize)
 	window.addEventListener('keydown', handleKeydown)
@@ -114,7 +115,7 @@ onBeforeUnmount(() => {
 	window.removeEventListener('keydown', handleKeydown)
 	clearTimers()
 	if (stage) {
-		stage.destroy()
+		stage.dispose()
 		stage = null
 	}
 })
@@ -130,9 +131,9 @@ function handleResize() {
 	displayWidth.value = Math.floor(baseWidth * scale)
 	displayHeight.value = Math.floor(baseHeight * scale)
 	if (stage) {
-		stage.width(displayWidth.value)
-		stage.height(displayHeight.value)
-		stage.scale({ x: scale, y: scale })
+		stage.setWidth(displayWidth.value)
+		stage.setHeight(displayHeight.value)
+		stage.setZoom(scale)
 	}
 }
 
@@ -146,11 +147,13 @@ function handleKeydown(e) {
 	}
 }
 
-async function loadKonva() {
-	if (window.Konva) return
+async function loadFabric() {
+	if (window.fabric) return
+	// We expect fabric to be loaded by the parent app or via index.html
+	// checking if it's available, otherwise try to load it from a CDN as fallback
 	return new Promise((resolve, reject) => {
 		const script = document.createElement('script')
-		script.src = 'https://unpkg.com/konva@9/konva.min.js'
+		script.src = 'https://unpkg.com/fabric@5.3.0/dist/fabric.min.js'
 		script.onload = resolve
 		script.onerror = reject
 		document.head.appendChild(script)
@@ -171,12 +174,76 @@ async function loadSlide() {
 		])
 
 		interactions = (interactionData || []).map(parseInteraction)
+		
+		// Parse transition from JSON
+		let transition = null
+		if (slideData.konva_json) {
+			try {
+				const parsed = JSON.parse(slideData.konva_json)
+				transition = parsed.transition
+			} catch (e) {}
+		}
+		
+		// Apply transition effect if present
+		if (transition && transition.type !== 'none') {
+			await applyTransitionIn(transition)
+		}
+		
+		currentTransition = transition
 		await nextTick()
 		renderStage(slideData.konva_json)
 		setupInteractions()
 	} catch (e) {
 		console.error('Failed to load slide', e)
 	}
+}
+
+/**
+ * Apply incoming transition animation on slide container
+ */
+async function applyTransitionIn(transition) {
+	if (!stageContainer.value) return
+	
+	const container = stageContainer.value
+	const duration = transition.duration || 0.5
+	
+	// Set initial state based on transition type
+	switch (transition.type) {
+		case 'fade':
+			container.style.opacity = '0'
+			break
+		case 'slide':
+			const slideStart = {
+				left: 'translateX(100%)',
+				right: 'translateX(-100%)',
+				up: 'translateY(100%)',
+				down: 'translateY(-100%)',
+			}
+			container.style.transform = slideStart[transition.direction] || slideStart.left
+			break
+		case 'zoom-in':
+			container.style.transform = 'scale(0.5)'
+			container.style.opacity = '0'
+			break
+		case 'zoom-out':
+			container.style.transform = 'scale(1.5)'
+			container.style.opacity = '0'
+			break
+	}
+	
+	// Trigger reflow
+	void container.offsetWidth
+	
+	// Apply transition and animate to final state
+	container.style.transition = `all ${duration}s ease-out`
+	container.style.opacity = '1'
+	container.style.transform = 'translateX(0) translateY(0) scale(1)'
+	
+	// Wait for transition to complete
+	await new Promise(resolve => setTimeout(resolve, duration * 1000))
+	
+	// Clean up transition styles
+	container.style.transition = ''
 }
 
 function parseInteraction(raw) {
@@ -197,64 +264,164 @@ function parseInteraction(raw) {
 	}
 }
 
-function renderStage(konvaJson) {
+function renderStage(json) {
 	if (!stageContainer.value) return
 
 	if (stage) {
-		stage.destroy()
+		stage.dispose()
 		stage = null
-		contentLayer = null
 	}
 
 	const container = stageContainer.value
-	container.innerHTML = ''
-
-	const Konva = window.Konva
-	const scale = displayWidth.value / baseWidth
-
-	if (konvaJson) {
+	// Clear container
+	container.innerHTML = '<canvas id="preview-canvas"></canvas>'
+	
+	const canvasEl = container.querySelector('canvas')
+	
+	// Initialize Fabric Canvas
+	// Use StaticCanvas for read-only, but we might need events for interactions
+	// So use Canvas but disable editing
+	const fabric = window.fabric
+	
+	stage = new fabric.Canvas('preview-canvas', {
+		width: displayWidth.value,
+		height: displayHeight.value,
+		selection: false,
+		hoverCursor: 'default',
+		backgroundColor: '#ffffff',
+	})
+	
+	if (!json) return
+	
+	// Load data
+	let fabricJson = json
+	if (typeof json === 'string') {
 		try {
-			stage = Konva.Node.create(konvaJson, container)
-			stage.width(displayWidth.value)
-			stage.height(displayHeight.value)
-			stage.scale({ x: scale, y: scale })
-			contentLayer = stage.findOne('Layer')
+			fabricJson = JSON.parse(json)
 		} catch (e) {
-			stage = null
+			console.error('Invalid JSON', e)
+			return
 		}
 	}
+	
+	stage.loadFromJSON(fabricJson, () => {
+		// Handle background gradient/image restoration if needed
+		// (Fabric.js loadFromJSON handles most of this, but complex backgrounds might need help
+		// similar to loadFromJSON in CourseAuthoring)
+		
+		// Scale content to fit display
+		const scale = displayWidth.value / baseWidth
+		stage.setZoom(scale)
+		stage.setWidth(displayWidth.value)
+		stage.setHeight(displayHeight.value)
+		
+		stage.renderAll()
+		
+		// Play Object Animations
+		playObjectAnimations()
+	})
+}
 
-	if (!stage) {
-		stage = new Konva.Stage({
-			container,
-			width: displayWidth.value,
-			height: displayHeight.value,
-			scaleX: scale,
-			scaleY: scale,
-		})
-		contentLayer = new Konva.Layer()
-		stage.add(contentLayer)
-	}
-
-	if (contentLayer) {
-		contentLayer.find('Transformer').forEach(t => t.destroy())
-	}
+function playObjectAnimations() {
+	if (!stage) return
+	
+	const objects = stage.getObjects()
+	
+	objects.forEach(obj => {
+		const anim = obj.animation // Access custom animation property
+		if (!anim || !anim.entrance) return
+		
+		const entrance = anim.entrance.type
+		const duration = (anim.duration || 0.5) * 1000
+		const delay = (anim.delay || 0) * 1000
+		
+		// Set initial state
+		// Store original values if needed
+		const original = {
+			opacity: obj.opacity,
+			left: obj.left,
+			top: obj.top,
+			scaleX: obj.scaleX,
+			scaleY: obj.scaleY,
+		}
+		
+		// Helper to reset after animation (if needed) or keep final state
+		
+		setTimeout(() => {
+			switch (entrance) {
+				case 'fade-in':
+					obj.set('opacity', 0)
+					obj.animate('opacity', 1, {
+						duration,
+						onChange: stage.renderAll.bind(stage),
+					})
+					break
+				case 'fly-in-left':
+					obj.set({ left: -100, opacity: 0 })
+					obj.animate({ left: original.left, opacity: 1 }, {
+						duration,
+						onChange: stage.renderAll.bind(stage),
+						easing: fabric.util.ease.easeOutCubic,
+					})
+					break
+				case 'fly-in-right':
+					obj.set({ left: baseWidth + 100, opacity: 0 })
+					obj.animate({ left: original.left, opacity: 1 }, {
+						duration,
+						onChange: stage.renderAll.bind(stage),
+						easing: fabric.util.ease.easeOutCubic,
+					})
+					break
+				case 'fly-in-bottom':
+					obj.set({ top: baseHeight + 100, opacity: 0 })
+					obj.animate({ top: original.top, opacity: 1 }, {
+						duration,
+						onChange: stage.renderAll.bind(stage),
+						easing: fabric.util.ease.easeOutCubic,
+					})
+					break
+				case 'fly-in-top':
+					obj.set({ top: -100, opacity: 0 })
+					obj.animate({ top: original.top, opacity: 1 }, {
+						duration,
+						onChange: stage.renderAll.bind(stage),
+						easing: fabric.util.ease.easeOutCubic,
+					})
+					break
+				case 'zoom-in':
+					obj.set({ scaleX: 0, scaleY: 0, opacity: 0 })
+					obj.animate({ scaleX: original.scaleX, scaleY: original.scaleY, opacity: 1 }, {
+						duration,
+						onChange: stage.renderAll.bind(stage),
+						easing: fabric.util.ease.easeOutBack,
+					})
+					break
+				case 'bounce-in':
+					obj.set({ top: -100, opacity: 0 })
+					obj.animate({ top: original.top, opacity: 1 }, {
+						duration,
+						onChange: stage.renderAll.bind(stage),
+						easing: fabric.util.ease.easeOutBounce,
+					})
+					break
+			}
+		}, delay)
+	})
 }
 
 function setupInteractions() {
-	if (!contentLayer) return
-
+	if (!stage) return
+	
 	for (const interaction of interactions) {
 		if (interaction.event === 'OnClick' && interaction.elementId) {
-			const node = contentLayer.findOne(`#${interaction.elementId}`)
-			if (node) {
-				node.on('click tap', () => executeAction(interaction))
-				node.on('mouseenter', () => {
-					document.body.style.cursor = 'pointer'
-				})
-				node.on('mouseleave', () => {
-					document.body.style.cursor = 'default'
-				})
+			// Find object by ID (custom property)
+			// Fabric objects don't have IDs by default, we rely on our custom 'id' property
+			const objects = stage.getObjects()
+			const target = objects.find(o => o.id === interaction.elementId)
+			
+			if (target) {
+				target.hoverCursor = 'pointer'
+				target.on('mousedown', () => executeAction(interaction))
 			}
 		} else if (interaction.event === 'OnEnterSlide') {
 			executeAction(interaction)

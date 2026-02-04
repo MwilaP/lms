@@ -121,6 +121,16 @@
 					</div>
 				</button>
 			</div>
+			
+			<div class="pt-2">
+				<button 
+					type="button"
+					class="w-full py-2 text-xs font-medium text-blue-600 hover:text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+					@click="$emit('open-theme-manager')"
+				>
+					{{ __('Browse All Themes') }}
+				</button>
+			</div>
 		</div>
 
 		<!-- Apply to Options -->
@@ -175,7 +185,7 @@ const props = defineProps({
 	},
 })
 
-const emit = defineEmits(['update-background', 'apply-theme'])
+const emit = defineEmits(['update-background', 'apply-theme', 'open-theme-manager'])
 
 const backgroundType = ref('solid')
 const backgroundColor = ref(props.currentBackground || '#FFFFFF')

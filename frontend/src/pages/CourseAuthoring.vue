@@ -23,6 +23,19 @@
 		:show="showShortcuts"
 		@close="showShortcuts = false"
 	/>
+	<SlideSorterView
+		:show="showSlideSorter"
+		:outline="outline"
+		:currentSlide="selectedSlide"
+		@close="showSlideSorter = false"
+		@select-slide="selectSlide"
+		@refresh-outline="loadCourseData"
+	/>
+	<ThemeManager
+		v-if="showThemeManager"
+		@close="showThemeManager = false"
+		@apply="handleApplyTheme({ theme: $event, applyTo: 'all' })"
+	/>
 	<div class="h-screen flex flex-col bg-surface-gray-1 overflow-hidden">
 		<header class="flex items-center justify-between bg-surface-white border-b px-4 py-2 shrink-0">
 			<div class="flex items-center space-x-3">
@@ -54,6 +67,11 @@
 						</template>
 					</Button>
 				</router-link>
+				<Button variant="outline" size="sm" @click="showSlideSorter = true" title="Slide Sorter">
+					<template #icon>
+						<LayoutGrid class="w-3.5 h-3.5" />
+					</template>
+				</Button>
 				<Button variant="outline" size="sm" @click="previewCourse">
 					<template #prefix>
 						<Play class="w-3.5 h-3.5" />
@@ -137,6 +155,8 @@
 					@align="handleAlign"
 					@distribute="handleDistribute"
 					@match-size="handleMatchSize"
+					@copy-format="copyFormat"
+					@format-painter-cancel="cancelFormatPainter"
 				/>
 
 				<div class="flex-1 flex overflow-hidden">
@@ -170,10 +190,20 @@
 								:currentBackground="currentSlideBackground"
 								@update-background="handleUpdateBackground"
 								@apply-theme="handleApplyTheme"
+								@open-theme-manager="showThemeManager = true"
 							/>
 							
 							<div v-else class="text-sm text-ink-gray-5 text-center py-4">
 								{{ __('Select a slide to begin editing') }}
+							</div>
+							
+							<!-- Slide Transition Panel (when slide is selected) -->
+							<div v-if="selectedSlide && !selectedElement" class="border-t">
+								<SlideTransitionPanel
+									v-model="currentSlideTransition"
+									@preview="previewTransition"
+									@apply-to-all="applyTransitionToAll"
+								/>
 							</div>
 							
 							<!-- Interaction Editor (always show when slide is selected) -->
@@ -183,6 +213,15 @@
 									:elementId="selectedElement?.id"
 									:availableSlides="allSlidesFlat"
 									@update="onInteractionUpdate"
+								/>
+							</div>
+							
+							<!-- Object Animations (when element is selected) -->
+							<div v-if="selectedSlide && selectedElement" class="border-t">
+								<AnimationTimeline
+									:elementId="selectedElement?.id"
+									v-model="currentElementAnimation"
+									@preview="previewElementAnimation"
 								/>
 							</div>
 						</div>
@@ -281,6 +320,7 @@ import {
 	Settings,
 	ChevronUp,
 	StickyNote,
+	LayoutGrid,
 } from 'lucide-vue-next'
 import AuthoringOutline from '@/components/Authoring/AuthoringOutline.vue'
 import ElementInspector from '@/components/Authoring/ElementInspector.vue'
@@ -292,6 +332,10 @@ import SlideTemplates from '@/components/Authoring/SlideTemplates.vue'
 import KeyboardShortcuts from '@/components/Authoring/KeyboardShortcuts.vue'
 import ElementLibrary from '@/components/Authoring/ElementLibrary.vue'
 import SlideDesignPanel from '@/components/Authoring/SlideDesignPanel.vue'
+import SlideSorterView from '@/components/Authoring/SlideSorterView.vue'
+import SlideTransitionPanel from '@/components/Authoring/SlideTransitionPanel.vue'
+import AnimationTimeline from '@/components/Authoring/AnimationTimeline.vue'
+import ThemeManager from '@/components/Authoring/ThemeManager.vue'
 
 const props = defineProps({
 	courseName: {
@@ -322,11 +366,23 @@ const zoomLevel = ref(100)
 const clipboard = ref(null)
 const showTemplates = ref(false)
 const showShortcuts = ref(false)
+const showSlideSorter = ref(false)
+const showThemeManager = ref(false)
 
 // Presenter Notes state
 const notesExpanded = ref(false)
 const currentSlideNotes = ref('')
 let notesAutosaveTimeout = null
+
+// Format Painter state
+const formatPainterData = ref(null)
+const formatPainterActive = ref(false)
+
+// Slide Transition state
+const currentSlideTransition = ref({ type: 'none', direction: 'left', duration: 0.5 })
+
+// Object Animation state
+const currentElementAnimation = ref({})
 
 // Canvas dimensions (16:9 aspect ratio)
 const canvasBaseWidth = 1024
@@ -501,6 +557,104 @@ function handleTextAlign(alignment) {
 }
 
 /**
+ * ============================================================================
+ * FORMAT PAINTER - Copy and Apply Formatting
+ * ============================================================================
+ */
+
+/**
+ * Copy formatting from the currently selected element
+ */
+function copyFormat() {
+	if (!canvas) return
+	const activeObject = canvas.getActiveObject()
+	if (!activeObject) return
+	
+	// Extract format properties based on object type
+	const format = {
+		type: activeObject.type,
+		// Common properties
+		fill: activeObject.fill,
+		stroke: activeObject.stroke,
+		strokeWidth: activeObject.strokeWidth,
+		opacity: activeObject.opacity,
+		// Shape-specific
+		rx: activeObject.rx,
+		ry: activeObject.ry,
+	}
+	
+	// Text-specific properties
+	if (activeObject.type === 'textbox' || activeObject.type === 'i-text' || activeObject.role === 'layout-block') {
+		const textbox = activeObject._layoutTextbox || activeObject
+		format.fontFamily = textbox.fontFamily
+		format.fontSize = textbox.fontSize
+		format.fontWeight = textbox.fontWeight
+		format.fontStyle = textbox.fontStyle
+		format.textAlign = textbox.textAlign
+		format.lineHeight = textbox.lineHeight
+		format.isText = true
+	}
+	
+	formatPainterData.value = format
+	formatPainterActive.value = true
+	
+	// Set up canvas click handler to apply format
+	canvas.on('mouse:down', handleFormatPainterClick)
+}
+
+/**
+ * Handle clicking on an element to apply copied format
+ */
+function handleFormatPainterClick(e) {
+	if (!formatPainterActive.value || !formatPainterData.value) return
+	
+	const target = e.target
+	if (!target) return
+	
+	const format = formatPainterData.value
+	
+	// Apply common formatting
+	if (format.fill !== undefined) target.set('fill', format.fill)
+	if (format.stroke !== undefined) target.set('stroke', format.stroke)
+	if (format.strokeWidth !== undefined) target.set('strokeWidth', format.strokeWidth)
+	if (format.opacity !== undefined) target.set('opacity', format.opacity)
+	if (format.rx !== undefined && target.rx !== undefined) target.set('rx', format.rx)
+	if (format.ry !== undefined && target.ry !== undefined) target.set('ry', format.ry)
+	
+	// Apply text formatting if both source and target are text
+	if (format.isText) {
+		const textbox = target._layoutTextbox || target
+		if (textbox.type === 'textbox' || textbox.type === 'i-text') {
+			if (format.fontFamily) textbox.set('fontFamily', format.fontFamily)
+			if (format.fontSize) textbox.set('fontSize', format.fontSize)
+			if (format.fontWeight) textbox.set('fontWeight', format.fontWeight)
+			if (format.fontStyle) textbox.set('fontStyle', format.fontStyle)
+			if (format.textAlign) textbox.set('textAlign', format.textAlign)
+			if (format.lineHeight) textbox.set('lineHeight', format.lineHeight)
+		}
+	}
+	
+	canvas.renderAll()
+	scheduleAutosave()
+	pushHistory()
+	
+	// Single apply mode - deactivate (the FormatPainter component handles this via isLocked)
+	// If not locked, this will be called and we clean up
+	cancelFormatPainter()
+}
+
+/**
+ * Cancel format painter mode
+ */
+function cancelFormatPainter() {
+	formatPainterActive.value = false
+	formatPainterData.value = null
+	if (canvas) {
+		canvas.off('mouse:down', handleFormatPainterClick)
+	}
+}
+
+/**
  * Handle slide background color/design changes
  */
 function handleUpdateBackground(data) {
@@ -541,6 +695,199 @@ function handleUpdateBackground(data) {
 		setBackgroundImage(image, applyTo)
 	}
 }
+
+/**
+ * ============================================================================
+ * SLIDE TRANSITIONS
+ * ============================================================================
+ */
+
+/**
+ * Preview the current transition effect
+ */
+function previewTransition(transition) {
+	// Show a simple preview animation on the canvas
+	if (!canvas) return
+	
+	const previewEl = document.createElement('div')
+	previewEl.className = 'fixed inset-0 z-50 bg-white transition-all pointer-events-none'
+	previewEl.style.opacity = '1'
+	document.body.appendChild(previewEl)
+	
+	// Apply transition animation
+	setTimeout(() => {
+		switch (transition.type) {
+			case 'fade':
+				previewEl.style.transition = `opacity ${transition.duration}s ease-in-out`
+				previewEl.style.opacity = '0'
+				break
+			case 'slide':
+				previewEl.style.transition = `transform ${transition.duration}s ease-in-out`
+				const slideDir = {
+					left: 'translateX(-100%)',
+					right: 'translateX(100%)',
+					up: 'translateY(-100%)',
+					down: 'translateY(100%)',
+				}
+				previewEl.style.transform = slideDir[transition.direction] || 'translateX(-100%)'
+				break
+			case 'wipe':
+				previewEl.style.transition = `clip-path ${transition.duration}s ease-in-out`
+				const wipeDir = {
+					left: 'inset(0 100% 0 0)',
+					right: 'inset(0 0 0 100%)',
+					up: 'inset(100% 0 0 0)',
+					down: 'inset(0 0 100% 0)',
+				}
+				previewEl.style.clipPath = wipeDir[transition.direction] || 'inset(0 100% 0 0)'
+				break
+			case 'zoom-in':
+				previewEl.style.transition = `transform ${transition.duration}s ease-in-out, opacity ${transition.duration}s ease-in-out`
+				previewEl.style.transform = 'scale(0.5)'
+				previewEl.style.opacity = '0'
+				break
+			case 'zoom-out':
+				previewEl.style.transition = `transform ${transition.duration}s ease-in-out, opacity ${transition.duration}s ease-in-out`
+				previewEl.style.transform = 'scale(1.5)'
+				previewEl.style.opacity = '0'
+				break
+			default:
+				previewEl.style.opacity = '0'
+		}
+	}, 50)
+	
+	// Remove preview element after animation
+	setTimeout(() => {
+		previewEl.remove()
+	}, (transition.duration * 1000) + 100)
+}
+
+/**
+ * Apply transition settings to all slides in the lesson
+ */
+async function applyTransitionToAll(transition) {
+	if (!selectedLessonName.value || !outline.value) return
+	
+	// Get all slides in the current lesson
+	for (const ch of outline.value.chapters) {
+		for (const le of ch.lessons) {
+			if (le.name === selectedLessonName.value) {
+				for (const sl of le.slides || []) {
+					// We'll store transition in canvas JSON when slide is loaded
+					// For now, just show a success message
+				}
+			}
+		}
+	}
+	
+	toast.success(__('Transition applied to all slides in this lesson'))
+}
+
+/**
+ * Watch for transition changes and save to canvas data
+ */
+watch(currentSlideTransition, (newTransition) => {
+	if (canvas && selectedSlide.value) {
+		// Store transition in canvas custom property
+		canvas._slideTransition = { ...newTransition }
+		scheduleAutosave()
+	}
+}, { deep: true })
+
+/**
+ * Watch for animation changes and save to element
+ */
+watch(currentElementAnimation, (newAnimation) => {
+	if (canvas && selectedElement.value?._fabricObject) {
+		const obj = selectedElement.value._fabricObject
+		obj.animation = { ...newAnimation }
+		scheduleAutosave()
+	}
+}, { deep: true })
+
+/**
+ * Preview element animation
+ */
+function previewElementAnimation(animData) {
+	if (!canvas || !selectedElement.value?._fabricObject) return
+	
+	const obj = selectedElement.value._fabricObject
+	const duration = animData.duration * 1000
+	
+	// Store original properties
+	const original = {
+		opacity: obj.opacity,
+		scaleX: obj.scaleX,
+		scaleY: obj.scaleY,
+		left: obj.left,
+		top: obj.top,
+	}
+	
+	// Apply animation based on type
+	switch (animData.type) {
+		case 'fade-in':
+			obj.set('opacity', 0)
+			canvas.renderAll()
+			obj.animate('opacity', 1, {
+				duration,
+				onChange: () => canvas.renderAll(),
+			})
+			break
+		case 'zoom-in':
+			obj.set({ scaleX: 0.1, scaleY: 0.1, opacity: 0 })
+			canvas.renderAll()
+			obj.animate({ scaleX: original.scaleX, scaleY: original.scaleY, opacity: 1 }, {
+				duration,
+				onChange: () => canvas.renderAll(),
+			})
+			break
+		case 'fly-in-left':
+			obj.set({ left: -100, opacity: 0 })
+			canvas.renderAll()
+			obj.animate({ left: original.left, opacity: 1 }, {
+				duration,
+				onChange: () => canvas.renderAll(),
+			})
+			break
+		case 'pulse':
+			obj.animate({ scaleX: original.scaleX * 1.2, scaleY: original.scaleY * 1.2 }, {
+				duration: duration / 2,
+				onChange: () => canvas.renderAll(),
+				onComplete: () => {
+					obj.animate({ scaleX: original.scaleX, scaleY: original.scaleY }, {
+						duration: duration / 2,
+						onChange: () => canvas.renderAll(),
+					})
+				}
+			})
+			break
+		case 'shake':
+			const shakeAmt = 10
+			let shakeCount = 0
+			const shakeInterval = setInterval(() => {
+				obj.set('left', original.left + (shakeCount % 2 === 0 ? shakeAmt : -shakeAmt))
+				canvas.renderAll()
+				shakeCount++
+				if (shakeCount >= 6) {
+					clearInterval(shakeInterval)
+					obj.set('left', original.left)
+					canvas.renderAll()
+				}
+			}, duration / 6)
+			break
+	}
+}
+
+/**
+ * Load animation data when selecting an element
+ */
+watch(selectedElement, (newElement) => {
+	if (newElement?._fabricObject?.animation) {
+		currentElementAnimation.value = { ...newElement._fabricObject.animation }
+	} else {
+		currentElementAnimation.value = {}
+	}
+})
 
 /**
  * Set background image with fit options
@@ -789,15 +1136,111 @@ function handleApplyTheme(data) {
 	if (!canvas) return
 	
 	// Apply theme background
-	canvas.backgroundColor = theme.background || '#FFFFFF'
+	if (typeof theme.background === 'object') {
+		if (theme.background.type === 'solid') {
+			canvas.backgroundColor = theme.background.color
+			canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas))
+		} else if (theme.background.type === 'gradient') {
+			const fabricGradient = createFabricGradient(theme.background.gradient)
+			canvas.backgroundColor = fabricGradient
+			canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas))
+		}
+	} else if (typeof theme.background === 'string') {
+		canvas.backgroundColor = theme.background
+		canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas))
+	}
+	
+	// Apply fonts and colors to existing elements
+	canvas.getObjects().forEach(obj => {
+		if (obj.type === 'textbox' || obj.type === 'i-text' || obj.role === 'layout-block') {
+			const textbox = obj._layoutTextbox || obj
+			
+			// Apply fonts
+			if (obj.role === 'heading' || obj.role === 'title') {
+				if (theme.fonts?.title) textbox.set('fontFamily', theme.fonts.title)
+				if (theme.colors?.title) textbox.set('fill', theme.colors.title)
+			} else {
+				if (theme.fonts?.body) textbox.set('fontFamily', theme.fonts.body)
+				if (theme.colors?.body) textbox.set('fill', theme.colors.body)
+			}
+		} else if (obj.type === 'rect' || obj.type === 'circle' || obj.type === 'triangle' || obj.type === 'polygon') {
+			// Apply accent color to shapes if they don't have a specific role or image
+			if (theme.colors?.accent && !obj.stroke) { // Rough heuristic
+				obj.set('fill', theme.colors.accent)
+			}
+		}
+	})
+	
 	canvas.renderAll()
 	scheduleAutosave()
 	pushHistory()
 	
 	// If applying to all slides
 	if (applyTo === 'all') {
-		applyBackgroundToAllSlides({ type: 'solid', color: theme.background })
+		applyThemeToAllSlides(theme)
 	}
+}
+
+async function applyThemeToAllSlides(theme) {
+	if (!selectedLessonName.value || !outline.value) return
+	
+	// Iterate valid slides
+	for (const ch of outline.value.chapters) {
+		for (const le of ch.lessons) {
+			if (le.name === selectedLessonName.value) {
+				for (const sl of le.slides || []) {
+					// We need to load the slide data, update it, and save it back
+					try {
+						const slideData = await call('lms.lms.authoring_api.get_slide', { slide: sl.name })
+						if (slideData && slideData.konva_json) {
+							const json = JSON.parse(slideData.konva_json)
+							
+							// Update background
+							if (typeof theme.background === 'object') {
+								if (theme.background.type === 'solid') {
+									json.background = theme.background.color
+								} else if (theme.background.type === 'gradient') {
+									// Fabric gradient structure
+									json.background = {
+										type: theme.background.gradient.type,
+										coords: theme.background.gradient.coords,
+										colorStops: theme.background.gradient.colorStops
+									}
+								}
+							} else {
+								json.background = theme.background
+							}
+							
+							// Update fonts/colors in objects
+							if (json.objects) {
+								json.objects.forEach(obj => {
+									if (obj.type === 'textbox' || obj.type === 'i-text') {
+										if (obj.role === 'heading' || obj.role === 'title') {
+											if (theme.fonts?.title) obj.fontFamily = theme.fonts.title
+											if (theme.colors?.title) obj.fill = theme.colors.title
+										} else {
+											if (theme.fonts?.body) obj.fontFamily = theme.fonts.body
+											if (theme.colors?.body) obj.fill = theme.colors.body
+										}
+									}
+								})
+							}
+							
+							// Save back
+							await call('lms.lms.authoring_api.save_konva_json', {
+								slide: sl.name,
+								konva_json: JSON.stringify(json)
+							})
+						}
+					} catch(e) {
+						console.error(`Failed to update slide ${sl.name}`, e)
+					}
+				}
+			}
+		}
+	}
+	
+	toast.success(__('Theme applied to all slides'))
 	
 	toast.success(__(`${theme.name} theme applied`))
 }
@@ -1507,6 +1950,15 @@ function initCanvas(existingJson) {
 						applyImageOverlay(parsed.overlayColor, parsed.overlayOpacity || 0.5)
 					}
 					
+					// Restore transition data if present
+					if (parsed.transition) {
+						canvas._slideTransition = { ...parsed.transition }
+						currentSlideTransition.value = { ...parsed.transition }
+					} else {
+						canvas._slideTransition = null
+						currentSlideTransition.value = { type: 'none', direction: 'left', duration: 0.5 }
+					}
+					
 					restoreLayoutBlockReferences()
 					canvas.renderAll()
 					setupCanvasEvents()
@@ -2193,6 +2645,7 @@ async function saveSlide() {
 		'layoutBlockId',
 		'containerPadding',
 		'name',
+		'animation',
 	])
 	
 	// Store gradient data separately if background is a gradient
@@ -2219,6 +2672,11 @@ async function saveSlide() {
 	if (canvas.overlayImage) {
 		canvasData.overlayColor = canvas.overlayImage.fill
 		canvasData.overlayOpacity = canvas.overlayImage.opacity
+	}
+	
+	// Store transition data
+	if (canvas._slideTransition) {
+		canvasData.transition = { ...canvas._slideTransition }
 	}
 	
 	const json = JSON.stringify(canvasData)

@@ -96,6 +96,17 @@
 			/>
 		</div>
 
+		<!-- Format Painter -->
+		<div class="flex items-center border-r pr-2 mr-1">
+			<FormatPainter
+				ref="formatPainterRef"
+				:canCopy="hasSelection"
+				@copy-format="$emit('copy-format')"
+				@apply-format="$emit('apply-format')"
+				@cancel="$emit('format-painter-cancel')"
+			/>
+		</div>
+
 		<!-- Font Selector (when text is selected) -->
 		<Transition
 			enter-active-class="transition-all duration-200 ease-out"
@@ -359,6 +370,9 @@ import {
 
 import ToolButton from './ToolButton.vue'
 import AlignmentDropdown from './AlignmentDropdown.vue'
+import FormatPainter from './FormatPainter.vue'
+
+const formatPainterRef = ref(null)
 
 const props = defineProps({
 	disabled: { type: Boolean, default: false },
@@ -399,6 +413,9 @@ const emit = defineEmits([
 	'align',
 	'distribute',
 	'match-size',
+	'copy-format',
+	'apply-format',
+	'format-painter-cancel',
 ])
 
 function getElementIcon(type) {
