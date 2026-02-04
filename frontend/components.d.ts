@@ -62,6 +62,8 @@ declare module 'vue' {
     EditorToolbar: typeof import('./src/components/Authoring/EditorToolbar.vue')['default']
     EditProfile: typeof import('./src/components/Modals/EditProfile.vue')['default']
     ElementInspector: typeof import('./src/components/Authoring/ElementInspector.vue')['default']
+    ElementItem: typeof import('./src/components/Authoring/ElementItem.vue')['default']
+    ElementLibrary: typeof import('./src/components/Authoring/ElementLibrary.vue')['default']
     EmailTemplateModal: typeof import('./src/components/Modals/EmailTemplateModal.vue')['default']
     EmailTemplates: typeof import('./src/components/Settings/EmailTemplates.vue')['default']
     EmptyState: typeof import('./src/components/EmptyState.vue')['default']

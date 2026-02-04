@@ -88,8 +88,16 @@
 						@add-lesson="addLesson"
 						@add-slide="addSlide"
 						@reorder="handleReorder"
+						@duplicate-slide="duplicateSlide"
 					/>
 				</div>
+				<!-- Element Library Panel -->
+				<ElementLibrary
+					:disabled="!selectedSlide"
+					@add-element="addElement"
+					@apply-layout="applyQuickLayout"
+					@image-upload="triggerImageUpload"
+				/>
 			</aside>
 
 			<main class="flex-1 flex flex-col overflow-hidden">
@@ -108,6 +116,7 @@
 					:currentFontSize="currentFontSize"
 					:isBold="isBold"
 					:isItalic="isItalic"
+					:selectedElementType="selectedElementType"
 					@add-element="addElement"
 					@layer-action="handleLayerAction"
 					@action="handleAction"
@@ -123,6 +132,7 @@
 					@font-size-change="handleFontSizeChange"
 					@toggle-bold="handleToggleBold"
 					@toggle-italic="handleToggleItalic"
+					@text-align="handleTextAlign"
 				/>
 
 				<div class="flex-1 flex overflow-hidden">
@@ -141,6 +151,7 @@
 							<span class="text-sm font-semibold text-ink-gray-9">{{ __('Inspector') }}</span>
 						</div>
 						<div class="flex-1 overflow-y-auto p-4 space-y-6">
+							<!-- Element Inspector (when element is selected) -->
 							<ElementInspector
 								v-if="selectedElement"
 								:element="selectedElement"
@@ -148,10 +159,21 @@
 								@delete="deleteElement"
 								@image-upload="handleImageUpload"
 							/>
+							
+							<!-- Slide Design Panel (when no element is selected) -->
+							<SlideDesignPanel
+								v-else-if="selectedSlide"
+								:currentBackground="currentSlideBackground"
+								@update-background="handleUpdateBackground"
+								@apply-theme="handleApplyTheme"
+							/>
+							
 							<div v-else class="text-sm text-ink-gray-5 text-center py-4">
-								{{ __('Select an element to edit its properties') }}
+								{{ __('Select a slide to begin editing') }}
 							</div>
-							<div v-if="selectedSlide" class="border-t pt-4">
+							
+							<!-- Interaction Editor (always show when slide is selected) -->
+							<div v-if="selectedSlide && selectedElement" class="border-t pt-4">
 								<InteractionEditor
 									:slide="selectedSlide"
 									:elementId="selectedElement?.id"
@@ -226,6 +248,8 @@ import VersionHistory from '@/components/Authoring/VersionHistory.vue'
 import EditorToolbar from '@/components/Authoring/EditorToolbar.vue'
 import SlideTemplates from '@/components/Authoring/SlideTemplates.vue'
 import KeyboardShortcuts from '@/components/Authoring/KeyboardShortcuts.vue'
+import ElementLibrary from '@/components/Authoring/ElementLibrary.vue'
+import SlideDesignPanel from '@/components/Authoring/SlideDesignPanel.vue'
 
 const props = defineProps({
 	courseName: {
@@ -349,6 +373,30 @@ const isItalic = computed(() => {
 	return textbox?.fontStyle === 'italic'
 })
 
+// Selected element type for contextual toolbar
+const selectedElementType = computed(() => {
+	const obj = selectedElement.value?._fabricObject
+	if (!obj) return null
+	
+	if (obj.role === 'layout-block') return 'Text Block'
+	if (obj.type === 'i-text' || obj.type === 'textbox') return 'Text'
+	if (obj.type === 'rect') return 'Rect'
+	if (obj.type === 'circle') return 'Circle'
+	if (obj.type === 'triangle') return 'Triangle'
+	if (obj.type === 'polygon') return 'Polygon'
+	if (obj.type === 'line') return 'Line'
+	if (obj.type === 'path') return 'Path'
+	if (obj.type === 'image') return 'Image'
+	if (obj.type === 'group') return 'Group'
+	return obj.type ? obj.type.charAt(0).toUpperCase() + obj.type.slice(1) : null
+})
+
+// Current slide background color
+const currentSlideBackground = computed(() => {
+	if (!canvas) return '#FFFFFF'
+	return canvas.backgroundColor || '#FFFFFF'
+})
+
 // Font change handlers - work with both layout blocks and direct text objects
 function handleFontChange(font) {
 	const textbox = getTextboxFromSelection()
@@ -385,6 +433,317 @@ function handleToggleItalic() {
 	canvas.renderAll()
 	updateSelectedElement()
 	scheduleAutosave()
+}
+
+function handleTextAlign(alignment) {
+	const textbox = getTextboxFromSelection()
+	if (!textbox) return
+	textbox.set('textAlign', alignment)
+	canvas.renderAll()
+	updateSelectedElement()
+	scheduleAutosave()
+}
+
+/**
+ * Handle slide background color/design changes
+ */
+function handleUpdateBackground(data) {
+	if (!canvas) return
+	
+	const { type, color, gradient, image, applyTo } = data
+	const fabric = window.fabric
+	
+	if (type === 'solid') {
+		// Clear background image
+		canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas))
+		// Set background color for current slide
+		canvas.backgroundColor = color || 'transparent'
+		canvas.renderAll()
+		scheduleAutosave()
+		pushHistory()
+		
+		// If applying to all slides in lesson, update them too
+		if (applyTo === 'all') {
+			applyBackgroundToAllSlides({ type: 'solid', color })
+		}
+	} else if (type === 'gradient' && gradient) {
+		// Clear background image
+		canvas.setBackgroundImage(null, canvas.renderAll.bind(canvas))
+		// Create Fabric.js gradient
+		const fabricGradient = createFabricGradient(gradient)
+		canvas.backgroundColor = fabricGradient
+		canvas.renderAll()
+		scheduleAutosave()
+		pushHistory()
+		
+		// If applying to all slides
+		if (applyTo === 'all') {
+			applyBackgroundToAllSlides({ type: 'gradient', gradient })
+		}
+	} else if (type === 'image' && image) {
+		// Set background image
+		setBackgroundImage(image, applyTo)
+	}
+}
+
+/**
+ * Set background image with fit options
+ */
+function setBackgroundImage(imageData, applyTo) {
+	if (!canvas) return
+	const fabric = window.fabric
+	
+	fabric.Image.fromURL(imageData.url, (img) => {
+		// Calculate dimensions based on fit mode
+		const canvasWidth = canvasBaseWidth
+		const canvasHeight = canvasBaseHeight
+		const imgWidth = img.width
+		const imgHeight = img.height
+		
+		let scaleX = 1
+		let scaleY = 1
+		let left = 0
+		let top = 0
+		
+		switch (imageData.fit) {
+			case 'cover':
+				// Cover entire canvas, may crop
+				const coverScale = Math.max(canvasWidth / imgWidth, canvasHeight / imgHeight)
+				scaleX = scaleY = coverScale
+				left = (canvasWidth - imgWidth * coverScale) / 2
+				top = (canvasHeight - imgHeight * coverScale) / 2
+				break
+				
+			case 'contain':
+				// Fit entire image, may show borders
+				const containScale = Math.min(canvasWidth / imgWidth, canvasHeight / imgHeight)
+				scaleX = scaleY = containScale
+				// Apply position
+				left = applyImagePosition(imageData.position, canvasWidth, canvasHeight, imgWidth * containScale, imgHeight * containScale).left
+				top = applyImagePosition(imageData.position, canvasWidth, canvasHeight, imgWidth * containScale, imgHeight * containScale).top
+				break
+				
+			case 'stretch':
+				// Stretch to fill
+				scaleX = canvasWidth / imgWidth
+				scaleY = canvasHeight / imgHeight
+				break
+				
+			case 'tile':
+				// Tile/repeat pattern
+				canvas.setBackgroundColor({
+					source: imageData.url,
+					repeat: 'repeat',
+				}, canvas.renderAll.bind(canvas))
+				
+				// Apply overlay if specified
+				if (imageData.overlayColor) {
+					applyImageOverlay(imageData.overlayColor, imageData.overlayOpacity)
+				}
+				
+				scheduleAutosave()
+				pushHistory()
+				
+				if (applyTo === 'all') {
+					applyBackgroundToAllSlides({ type: 'image', image: imageData })
+				}
+				return
+		}
+		
+		img.set({
+			scaleX: scaleX,
+			scaleY: scaleY,
+			left: left,
+			top: top,
+			opacity: imageData.opacity,
+		})
+		
+		canvas.setBackgroundImage(img, canvas.renderAll.bind(canvas))
+		
+		// Apply overlay if specified
+		if (imageData.overlayColor) {
+			applyImageOverlay(imageData.overlayColor, imageData.overlayOpacity)
+		}
+		
+		scheduleAutosave()
+		pushHistory()
+		
+		if (applyTo === 'all') {
+			applyBackgroundToAllSlides({ type: 'image', image: imageData })
+		}
+	}, { crossOrigin: 'anonymous' })
+}
+
+/**
+ * Apply position for contain/tile modes
+ */
+function applyImagePosition(position, canvasWidth, canvasHeight, imgWidth, imgHeight) {
+	const positions = {
+		'top-left': { left: 0, top: 0 },
+		'top': { left: (canvasWidth - imgWidth) / 2, top: 0 },
+		'top-right': { left: canvasWidth - imgWidth, top: 0 },
+		'left': { left: 0, top: (canvasHeight - imgHeight) / 2 },
+		'center': { left: (canvasWidth - imgWidth) / 2, top: (canvasHeight - imgHeight) / 2 },
+		'right': { left: canvasWidth - imgWidth, top: (canvasHeight - imgHeight) / 2 },
+		'bottom-left': { left: 0, top: canvasHeight - imgHeight },
+		'bottom': { left: (canvasWidth - imgWidth) / 2, top: canvasHeight - imgHeight },
+		'bottom-right': { left: canvasWidth - imgWidth, top: canvasHeight - imgHeight },
+	}
+	return positions[position] || positions['center']
+}
+
+/**
+ * Apply color overlay on background image
+ */
+function applyImageOverlay(color, opacity) {
+	if (!canvas) return
+	const fabric = window.fabric
+	
+	// Create a semi-transparent rectangle as overlay
+	const overlay = new fabric.Rect({
+		left: 0,
+		top: 0,
+		width: canvasBaseWidth,
+		height: canvasBaseHeight,
+		fill: color,
+		opacity: opacity,
+		selectable: false,
+		evented: false,
+	})
+	
+	canvas.setOverlayImage(overlay, canvas.renderAll.bind(canvas))
+}
+
+/**
+ * Create a Fabric.js gradient from gradient data
+ */
+function createFabricGradient(gradientData) {
+	const fabric = window.fabric
+	const { type, angle, centerX, centerY, stops } = gradientData
+	
+	if (type === 'linear') {
+		// Convert angle to coordinates
+		const angleRad = (angle - 90) * (Math.PI / 180)
+		const coords = {
+			x1: canvasBaseWidth / 2 - Math.cos(angleRad) * canvasBaseWidth / 2,
+			y1: canvasBaseHeight / 2 - Math.sin(angleRad) * canvasBaseHeight / 2,
+			x2: canvasBaseWidth / 2 + Math.cos(angleRad) * canvasBaseWidth / 2,
+			y2: canvasBaseHeight / 2 + Math.sin(angleRad) * canvasBaseHeight / 2,
+		}
+		
+		return new fabric.Gradient({
+			type: 'linear',
+			coords: coords,
+			colorStops: stops.map(s => ({
+				offset: s.position / 100,
+				color: s.color,
+			})),
+		})
+	} else if (type === 'radial') {
+		// Radial gradient
+		const cx = (centerX / 100) * canvasBaseWidth
+		const cy = (centerY / 100) * canvasBaseHeight
+		const r = Math.max(canvasBaseWidth, canvasBaseHeight) / 2
+		
+		return new fabric.Gradient({
+			type: 'radial',
+			coords: {
+				x1: cx,
+				y1: cy,
+				x2: cx,
+				y2: cy,
+				r1: 0,
+				r2: r,
+			},
+			colorStops: stops.map(s => ({
+				offset: s.position / 100,
+				color: s.color,
+			})),
+		})
+	}
+	
+	return null
+}
+
+/**
+ * Apply background to all slides in the current lesson
+ */
+async function applyBackgroundToAllSlides(backgroundData) {
+	if (!selectedLessonName.value) return
+	
+	try {
+		// Get all slides in current lesson
+		const currentLesson = outline.value?.chapters
+			?.flatMap(ch => ch.lessons || [])
+			?.find(le => le.name === selectedLessonName.value)
+		
+		if (!currentLesson?.slides) return
+		
+		// Update each slide's background
+		for (const slide of currentLesson.slides) {
+			if (slide.name === selectedSlide.value) continue // Skip current slide (already updated)
+			
+			// Load slide data
+			const slideData = await call('lms.lms.authoring_api.get_slide', { slide: slide.name })
+			if (!slideData) continue
+			
+			// Parse canvas JSON
+			let canvasData = {}
+			try {
+				canvasData = JSON.parse(slideData.konva_json || '{}')
+			} catch (e) {
+				canvasData = {}
+			}
+			
+			// Update background based on type
+			if (backgroundData.type === 'solid') {
+				canvasData.background = backgroundData.color || 'transparent'
+				canvasData.backgroundGradient = null // Clear gradient
+				canvasData.backgroundImage = null // Clear image
+			} else if (backgroundData.type === 'gradient') {
+				canvasData.backgroundGradient = backgroundData.gradient
+				canvasData.background = null // Clear solid color
+				canvasData.backgroundImage = null // Clear image
+			} else if (backgroundData.type === 'image') {
+				canvasData.backgroundImage = backgroundData.image
+				canvasData.background = null // Clear solid color
+				canvasData.backgroundGradient = null // Clear gradient
+			}
+			
+			// Save back
+			await call('lms.lms.authoring_api.save_konva_json', {
+				slide: slide.name,
+				konva_json: JSON.stringify(canvasData),
+			})
+		}
+		
+		toast.success(__('Background applied to all slides in lesson'))
+	} catch (e) {
+		console.error('Error applying background to all slides:', e)
+		toast.error(__('Failed to apply background to all slides'))
+	}
+}
+
+/**
+ * Apply a color theme to the slide
+ */
+function handleApplyTheme(data) {
+	const { theme, applyTo } = data
+	
+	if (!canvas) return
+	
+	// Apply theme background
+	canvas.backgroundColor = theme.background || '#FFFFFF'
+	canvas.renderAll()
+	scheduleAutosave()
+	pushHistory()
+	
+	// If applying to all slides
+	if (applyTo === 'all') {
+		applyBackgroundToAllSlides({ type: 'solid', color: theme.background })
+	}
+	
+	toast.success(__(`${theme.name} theme applied`))
 }
 
 function onInteractionUpdate() {
@@ -1023,6 +1382,28 @@ function initCanvas(existingJson) {
 			if (parsed.objects) {
 				// It's Fabric.js format
 				canvas.loadFromJSON(parsed, () => {
+					// Restore gradient background if present
+					if (parsed.backgroundGradient) {
+						const gradientData = parsed.backgroundGradient
+						const fabricGradient = new fabric.Gradient({
+							type: gradientData.type,
+							coords: gradientData.coords,
+							colorStops: gradientData.colorStops,
+						})
+						canvas.backgroundColor = fabricGradient
+					}
+					
+					// Restore background image if present
+					if (parsed.backgroundImage) {
+						const imgData = parsed.backgroundImage
+						setBackgroundImage(imgData, 'current')
+					}
+					
+					// Restore overlay if present
+					if (parsed.overlayColor) {
+						applyImageOverlay(parsed.overlayColor, parsed.overlayOpacity || 0.5)
+					}
+					
 					restoreLayoutBlockReferences()
 					canvas.renderAll()
 					setupCanvasEvents()
@@ -1701,7 +2082,7 @@ async function saveSlide() {
 	
 	// Get Fabric.js JSON with custom properties for layout blocks
 	// Exclude any editing overlay objects
-	const json = JSON.stringify(canvas.toJSON([
+	const canvasData = canvas.toJSON([
 		'id', 
 		'isPlaceholder',
 		'role',
@@ -1709,7 +2090,35 @@ async function saveSlide() {
 		'layoutBlockId',
 		'containerPadding',
 		'name',
-	]))
+	])
+	
+	// Store gradient data separately if background is a gradient
+	if (canvas.backgroundColor && typeof canvas.backgroundColor === 'object') {
+		canvasData.backgroundGradient = {
+			type: canvas.backgroundColor.type,
+			coords: canvas.backgroundColor.coords,
+			colorStops: canvas.backgroundColor.colorStops,
+		}
+		canvasData.background = null // Clear solid color
+	}
+	
+	// Store background image data if present
+	if (canvas.backgroundImage) {
+		canvasData.backgroundImage = {
+			url: canvas.backgroundImage._element?.src || canvas.backgroundImage.getSrc(),
+			fit: canvas.backgroundImage._fit || 'cover',
+			opacity: canvas.backgroundImage.opacity || 1,
+			position: canvas.backgroundImage._position || 'center',
+		}
+	}
+	
+	// Store overlay data if present
+	if (canvas.overlayImage) {
+		canvasData.overlayColor = canvas.overlayImage.fill
+		canvasData.overlayOpacity = canvas.overlayImage.opacity
+	}
+	
+	const json = JSON.stringify(canvasData)
 	
 	try {
 		await call('lms.lms.authoring_api.save_konva_json', {
@@ -1828,6 +2237,134 @@ async function addSlide(lessonName) {
 async function addSlideToCurrentLesson() {
 	if (!selectedLessonName.value) return
 	await addSlide(selectedLessonName.value)
+}
+
+/**
+ * Duplicate a slide - copies canvas content to a new slide
+ */
+async function duplicateSlide(slideName) {
+	if (!slideName) return
+	
+	try {
+		// Get the source slide data
+		const sourceData = await call('lms.lms.authoring_api.get_slide', { slide: slideName })
+		if (!sourceData) {
+			toast.error(__('Failed to get slide data'))
+			return
+		}
+		
+		// Find the lesson this slide belongs to
+		let lessonName = null
+		for (const ch of outline.value?.chapters || []) {
+			for (const le of ch.lessons || []) {
+				for (const sl of le.slides || []) {
+					if (sl.name === slideName) {
+						lessonName = le.name
+						break
+					}
+				}
+				if (lessonName) break
+			}
+			if (lessonName) break
+		}
+		
+		if (!lessonName) {
+			toast.error(__('Could not find parent lesson'))
+			return
+		}
+		
+		// Create new slide
+		const newSlide = await call('lms.lms.authoring_api.create_slide', {
+			lesson: lessonName,
+		})
+		
+		if (!newSlide?.name) {
+			toast.error(__('Failed to create slide'))
+			return
+		}
+		
+		// Copy canvas content to new slide
+		await call('lms.lms.authoring_api.save_konva_json', {
+			slide: newSlide.name,
+			konva_json: sourceData.konva_json || '{}',
+		})
+		
+		await fetchOutline()
+		selectSlide(newSlide.name)
+		toast.success(__('Slide duplicated'))
+	} catch (e) {
+		console.error('Duplicate slide error:', e)
+		toast.error(__('Failed to duplicate slide'))
+	}
+}
+
+/**
+ * Apply a quick layout from the Element Library panel
+ */
+function applyQuickLayout(layout) {
+	// Find the template by ID and apply it
+	const templates = {
+		'title-content': {
+			id: 'title-content',
+			background: '#ffffff',
+			elements: [
+				{ type: 'Text', attrs: { x: 60, y: 40, width: 900, height: 60, text: 'Slide Title', fontSize: 42, fontStyle: 'bold', fill: '#111827', slot: 'title' } },
+				{ type: 'Text', attrs: { x: 60, y: 120, width: 900, height: 400, text: '• First point goes here\n• Second point with details\n• Third important item\n• Additional content', fontSize: 24, fill: '#374151', slot: 'body' } },
+			],
+		},
+		'two-column': {
+			id: 'two-column',
+			background: '#ffffff',
+			elements: [
+				{ type: 'Text', attrs: { x: 60, y: 40, width: 900, height: 60, text: 'Two Column Layout', fontSize: 42, fontStyle: 'bold', fill: '#111827', slot: 'title' } },
+				{ type: 'Rect', attrs: { x: 60, y: 120, width: 440, height: 400, fill: '#f3f4f6', cornerRadius: 8 } },
+				{ type: 'Text', attrs: { x: 80, y: 140, width: 400, height: 360, text: 'Left Column\n\nContent here...', fontSize: 20, fill: '#374151', slot: 'left-column' } },
+				{ type: 'Rect', attrs: { x: 524, y: 120, width: 440, height: 400, fill: '#f3f4f6', cornerRadius: 8 } },
+				{ type: 'Text', attrs: { x: 544, y: 140, width: 400, height: 360, text: 'Right Column\n\nContent here...', fontSize: 20, fill: '#374151', slot: 'right-column' } },
+			],
+		},
+		'image-left': {
+			id: 'image-left',
+			background: '#ffffff',
+			elements: [
+				{ type: 'Rect', attrs: { x: 60, y: 88, width: 440, height: 400, fill: '#e0e7ff', stroke: '#c7d2fe', strokeWidth: 2, cornerRadius: 8, dash: [10, 5] } },
+				{ type: 'Text', attrs: { x: 180, y: 260, width: 200, height: 50, text: 'Image', fontSize: 24, fill: '#6366f1', align: 'center' } },
+				{ type: 'Text', attrs: { x: 540, y: 140, width: 420, height: 60, text: 'Content Title', fontSize: 36, fontStyle: 'bold', fill: '#111827', slot: 'title' } },
+				{ type: 'Text', attrs: { x: 540, y: 220, width: 420, height: 250, text: 'Description text goes here.\nAdd your content and\nexplanations.', fontSize: 20, fill: '#6b7280', slot: 'body' } },
+			],
+		},
+		'quote': {
+			id: 'quote',
+			background: '#fef3c7',
+			elements: [
+				{ type: 'Text', attrs: { x: 462, y: 120, width: 100, height: 120, text: '"', fontSize: 120, fill: '#d97706', align: 'center' } },
+				{ type: 'Text', attrs: { x: 112, y: 250, width: 800, height: 100, text: 'Your inspiring quote goes here.\nMake it memorable.', fontSize: 32, fill: '#78350f', align: 'center', fontStyle: 'italic', slot: 'quote' } },
+				{ type: 'Text', attrs: { x: 312, y: 400, width: 400, height: 50, text: '— Author Name', fontSize: 20, fill: '#92400e', align: 'center', slot: 'author' } },
+			],
+		},
+	}
+	
+	const template = templates[layout.id]
+	if (template) {
+		applyTemplate(template)
+	}
+}
+
+/**
+ * Trigger image upload dialog
+ */
+function triggerImageUpload() {
+	// Create a temporary file input and trigger it
+	const input = document.createElement('input')
+	input.type = 'file'
+	input.accept = 'image/*'
+	input.onchange = (e) => {
+		const file = e.target.files?.[0]
+		if (file) {
+			handleImageUpload(file)
+		}
+	}
+	input.click()
 }
 
 function handleReorder(data) {

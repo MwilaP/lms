@@ -89,11 +89,18 @@
 															<GripVertical class="w-3 h-3 text-ink-gray-4 slide-handle cursor-grab mr-1 opacity-0 group-hover:opacity-100" />
 															<Layers class="w-3.5 h-3.5 text-ink-gray-4 shrink-0" />
 															<span
-																class="ml-2 text-sm truncate"
+																class="ml-2 text-sm truncate flex-1"
 																:class="selectedSlide === slide.name ? 'text-blue-600 font-medium' : 'text-ink-gray-6'"
 															>
 																{{ slide.title }}
 															</span>
+															<button
+																class="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-blue-100 transition-all"
+																@click.stop="$emit('duplicate-slide', slide.name)"
+																title="Duplicate slide"
+															>
+																<Copy class="w-3 h-3 text-ink-gray-5 hover:text-blue-600" />
+															</button>
 														</div>
 													</template>
 												</Draggable>
@@ -128,6 +135,7 @@ import {
 	Layers,
 	Plus,
 	GripVertical,
+	Copy,
 } from 'lucide-vue-next'
 
 defineProps({
@@ -141,7 +149,7 @@ defineProps({
 	},
 })
 
-const emit = defineEmits(['select-slide', 'add-lesson', 'add-slide', 'reorder'])
+const emit = defineEmits(['select-slide', 'add-lesson', 'add-slide', 'reorder', 'duplicate-slide'])
 
 function onChapterReorder(e) {
 	emit('reorder', { type: 'chapter', event: e })

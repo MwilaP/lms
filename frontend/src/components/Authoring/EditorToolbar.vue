@@ -97,43 +97,87 @@
 		</div>
 
 		<!-- Font Selector (when text is selected) -->
-		<div v-if="isTextSelected" class="flex items-center border-r pr-2 mr-1 space-x-2 bg-blue-50 px-2 py-1 rounded-lg">
-			<div class="flex items-center space-x-1">
-				<Type class="w-3.5 h-3.5 text-blue-600" />
+		<Transition
+			enter-active-class="transition-all duration-200 ease-out"
+			enter-from-class="opacity-0 scale-95 -translate-x-2"
+			enter-to-class="opacity-100 scale-100 translate-x-0"
+			leave-active-class="transition-all duration-150 ease-in"
+			leave-from-class="opacity-100 scale-100"
+			leave-to-class="opacity-0 scale-95"
+		>
+			<div v-if="isTextSelected" class="flex items-center border-r pr-2 mr-1 space-x-2 bg-blue-50 px-2 py-1 rounded-lg">
+				<div class="flex items-center space-x-1">
+					<Type class="w-3.5 h-3.5 text-blue-600" />
+					<select
+						:value="currentFont"
+						@change="$emit('font-change', $event.target.value)"
+						class="text-sm border border-blue-200 rounded-md px-2 py-1.5 bg-white text-ink-gray-8 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-32 cursor-pointer"
+						title="Font Family"
+					>
+						<option v-for="font in fonts" :key="font" :value="font" :style="{ fontFamily: font }">{{ font }}</option>
+					</select>
+				</div>
 				<select
-					:value="currentFont"
-					@change="$emit('font-change', $event.target.value)"
-					class="text-sm border border-blue-200 rounded-md px-2 py-1.5 bg-white text-ink-gray-8 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-32 cursor-pointer"
-					title="Font Family"
+					:value="currentFontSize"
+					@change="$emit('font-size-change', parseInt($event.target.value))"
+					class="text-sm border border-blue-200 rounded-md px-2 py-1.5 bg-white text-ink-gray-8 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-20 cursor-pointer"
+					title="Font Size"
 				>
-					<option v-for="font in fonts" :key="font" :value="font" :style="{ fontFamily: font }">{{ font }}</option>
+					<option v-for="size in fontSizes" :key="size" :value="size">{{ size }}px</option>
 				</select>
+				<div class="flex items-center border-l border-blue-200 pl-2 space-x-0.5">
+					<ToolButton
+						:active="isBold"
+						@click="$emit('toggle-bold')"
+						title="Bold (Ctrl+B)"
+					>
+						<Bold class="w-4 h-4" />
+					</ToolButton>
+					<ToolButton
+						:active="isItalic"
+						@click="$emit('toggle-italic')"
+						title="Italic (Ctrl+I)"
+					>
+						<Italic class="w-4 h-4" />
+					</ToolButton>
+				</div>
+				<div class="flex items-center border-l border-blue-200 pl-2 space-x-0.5">
+					<ToolButton
+						@click="$emit('text-align', 'left')"
+						title="Align Left"
+					>
+						<AlignLeft class="w-4 h-4" />
+					</ToolButton>
+					<ToolButton
+						@click="$emit('text-align', 'center')"
+						title="Align Center"
+					>
+						<AlignCenter class="w-4 h-4" />
+					</ToolButton>
+					<ToolButton
+						@click="$emit('text-align', 'right')"
+						title="Align Right"
+					>
+						<AlignRight class="w-4 h-4" />
+					</ToolButton>
+				</div>
 			</div>
-			<select
-				:value="currentFontSize"
-				@change="$emit('font-size-change', parseInt($event.target.value))"
-				class="text-sm border border-blue-200 rounded-md px-2 py-1.5 bg-white text-ink-gray-8 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-20 cursor-pointer"
-				title="Font Size"
-			>
-				<option v-for="size in fontSizes" :key="size" :value="size">{{ size }}px</option>
-			</select>
-			<div class="flex items-center border-l border-blue-200 pl-2 space-x-0.5">
-				<ToolButton
-					:active="isBold"
-					@click="$emit('toggle-bold')"
-					title="Bold (Ctrl+B)"
-				>
-					<Bold class="w-4 h-4" />
-				</ToolButton>
-				<ToolButton
-					:active="isItalic"
-					@click="$emit('toggle-italic')"
-					title="Italic (Ctrl+I)"
-				>
-					<Italic class="w-4 h-4" />
-				</ToolButton>
+		</Transition>
+
+		<!-- Selection indicator -->
+		<Transition
+			enter-active-class="transition-all duration-150"
+			enter-from-class="opacity-0"
+			enter-to-class="opacity-100"
+			leave-active-class="transition-all duration-100"
+			leave-from-class="opacity-100"
+			leave-to-class="opacity-0"
+		>
+			<div v-if="hasSelection && selectedElementType && !isTextSelected" class="flex items-center px-2 py-1 bg-gray-100 rounded-md mr-1">
+				<component :is="getElementIcon(selectedElementType)" class="w-3.5 h-3.5 text-ink-gray-6 mr-1.5" />
+				<span class="text-xs text-ink-gray-6 font-medium">{{ selectedElementType }}</span>
 			</div>
-		</div>
+		</Transition>
 
 		<!-- Layer Controls -->
 		<div class="flex items-center border-r pr-2 mr-1">
@@ -266,7 +310,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import {
 	MousePointer2,
 	Square,
@@ -297,6 +341,9 @@ import {
 	Maximize2,
 	Bold,
 	Italic,
+	AlignLeft,
+	AlignCenter,
+	AlignRight,
 } from 'lucide-vue-next'
 
 import ToolButton from './ToolButton.vue'
@@ -316,6 +363,7 @@ const props = defineProps({
 	currentFontSize: { type: Number, default: 24 },
 	isBold: { type: Boolean, default: false },
 	isItalic: { type: Boolean, default: false },
+	selectedElementType: { type: String, default: null },
 })
 
 const emit = defineEmits([
@@ -334,7 +382,24 @@ const emit = defineEmits([
 	'font-size-change',
 	'toggle-bold',
 	'toggle-italic',
+	'text-align',
 ])
+
+function getElementIcon(type) {
+	const iconMap = {
+		'Rect': Square,
+		'Circle': Circle,
+		'Triangle': Triangle,
+		'Polygon': Star,
+		'Line': Minus,
+		'Path': ArrowRight,
+		'Image': ImageIcon,
+		'Text': Type,
+		'Text Block': Type,
+		'Group': Square,
+	}
+	return iconMap[type] || Square
+}
 
 const imageInput = ref(null)
 
